@@ -1,7 +1,6 @@
 open Utils
 open Identity
 open PaymentHelpersTypes
-open LoggerUtils
 open URLModule
 
 let getPaymentType = paymentMethodType =>
@@ -21,7 +20,6 @@ let retrievePaymentIntent = async (
   clientSecret,
   ~headers=?,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~isForceSync=false,
   ~sdkAuthorization=None,
@@ -50,9 +48,8 @@ let retrievePaymentIntent = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=RETRIEVE_CALL,
+    ~event=RetrievePaymentIntent,
     ~headers,
-    ~logger,
     ~method=#GET,
     ~customPodUri=Some(customPodUri),
     ~publishableKey=Some(publishableKey),
@@ -65,7 +62,6 @@ let retrievePaymentIntent = async (
 let fetchPaymentMethodEligibility = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~bodyArr,
   ~sdkAuthorization=None,
@@ -99,8 +95,7 @@ let fetchPaymentMethodEligibility = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=PAYMENT_METHOD_ELIGIBILITY_CALL,
-    ~logger,
+    ~event=PaymentMethodEligibility,
     ~bodyStr=body->JSON.stringify,
     ~method=#POST,
     ~customPodUri=Some(customPodUri),
@@ -112,13 +107,7 @@ let fetchPaymentMethodEligibility = async (
   )
 }
 
-let threeDsAuth = async (
-  ~clientSecret,
-  ~logger,
-  ~threeDsMethodComp,
-  ~headers,
-  ~sdkAuthorization=None,
-) => {
+let threeDsAuth = async (~clientSecret, ~threeDsMethodComp, ~headers, ~sdkAuthorization=None) => {
   let url = APIUtils.generateApiUrlV1(
     ~apiCallType=FetchThreeDsAuth,
     ~params={
@@ -161,8 +150,7 @@ let threeDsAuth = async (
 
   await fetchApiWithLogging(
     url,
-    ~eventName=AUTHENTICATION_CALL,
-    ~logger,
+    ~event=Authentication,
     ~onSuccess,
     ~onFailure,
     ~bodyStr=body->JSON.stringify,
@@ -177,7 +165,6 @@ let rec pollRetrievePaymentIntent = (
   clientSecret,
   ~headers,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~isForceSync=false,
   ~sdkAuthorization=None,
@@ -187,7 +174,6 @@ let rec pollRetrievePaymentIntent = (
     clientSecret,
     ~headers,
     ~publishableKey,
-    ~logger,
     ~customPodUri,
     ~isForceSync,
     ~sdkAuthorization,
@@ -197,6 +183,18 @@ let rec pollRetrievePaymentIntent = (
     let status = dict->getString("status", "")
 
     if status === "succeeded" || status === "failed" {
+      let outcome: SdkLogger.paymentOutcomeData = {
+        status,
+        manualRetryAllowed: dict->getBool("manual_retry_allowed", false),
+      }
+      SdkLogger.logLifecycle(
+        ~event=status === "succeeded" ? PaymentSucceeded(outcome) : PaymentFailed(outcome),
+        ~details=?status === "failed" ? Some(json->LoggerUtils.intentErrorDetails) : None,
+        ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+          ~method=dict->getString("payment_method", ""),
+          ~methodType=dict->getString("payment_method_type", ""),
+        ),
+      )
       resolve(json)
     } else {
       delay(2000)
@@ -205,7 +203,6 @@ let rec pollRetrievePaymentIntent = (
           clientSecret,
           ~headers,
           ~publishableKey,
-          ~logger,
           ~customPodUri,
           ~isForceSync,
           ~sdkAuthorization,
@@ -220,7 +217,6 @@ let rec pollRetrievePaymentIntent = (
       clientSecret,
       ~headers,
       ~publishableKey,
-      ~logger,
       ~customPodUri,
       ~isForceSync,
       ~sdkAuthorization,
@@ -228,7 +224,7 @@ let rec pollRetrievePaymentIntent = (
   })
 }
 
-let retrieveStatus = async (~publishableKey, ~customPodUri, pollID, logger, ~sdkAuthorization) => {
+let retrieveStatus = async (~publishableKey, ~customPodUri, pollID, ~sdkAuthorization) => {
   let uri = APIUtils.generateApiUrlV1(
     ~apiCallType=RetrieveStatus,
     ~params={
@@ -248,8 +244,7 @@ let retrieveStatus = async (~publishableKey, ~customPodUri, pollID, logger, ~sdk
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=POLL_STATUS_CALL,
-    ~logger,
+    ~event=PollStatus,
     ~bodyStr="",
     ~method=#GET,
     ~customPodUri=Some(customPodUri),
@@ -267,11 +262,10 @@ let rec pollStatus = (
   ~interval,
   ~count,
   ~returnUrl,
-  ~logger,
   ~sdkAuthorization,
 ) => {
   open Promise
-  retrieveStatus(~publishableKey, ~customPodUri, pollId, logger, ~sdkAuthorization)
+  retrieveStatus(~publishableKey, ~customPodUri, pollId, ~sdkAuthorization)
   ->then(json => {
     let dict = json->getDictFromJson
     let status = dict->getString("status", "")
@@ -292,7 +286,6 @@ let rec pollStatus = (
               ~interval,
               ~count=count - 1,
               ~returnUrl,
-              ~logger,
               ~sdkAuthorization,
             )->then(
               res => {
@@ -316,7 +309,6 @@ let rec pollStatus = (
       ~interval,
       ~count=count - 1,
       ~returnUrl,
-      ~logger,
       ~sdkAuthorization,
     )->then(res => resolve(res))
   })
@@ -338,7 +330,6 @@ let rec intentCall = (
   ~bodyStr,
   ~confirmParam: ConfirmType.confirmParams,
   ~clientSecret,
-  ~optLogger,
   ~handleUserError,
   ~paymentType,
   ~iframeId,
@@ -361,25 +352,12 @@ let rec intentCall = (
 
   let isCompleteAuthorize = uri->String.includes("/complete_authorize")
   let isPostSessionTokens = uri->String.includes("/post_session_tokens")
-  let (eventName: HyperLoggerTypes.eventName, initEventName: HyperLoggerTypes.eventName) = switch (
-    isConfirm,
-    isCompleteAuthorize,
-    isPostSessionTokens,
-  ) {
-  | (true, _, _) => (CONFIRM_CALL, CONFIRM_CALL_INIT)
-  | (_, true, _) => (COMPLETE_AUTHORIZE_CALL, COMPLETE_AUTHORIZE_CALL_INIT)
-  | (_, _, true) => (POST_SESSION_TOKENS_CALL, POST_SESSION_TOKENS_CALL_INIT)
-  | _ => (RETRIEVE_CALL, RETRIEVE_CALL_INIT)
+  let apiEvent: SdkLogger.apiEvent = switch (isConfirm, isCompleteAuthorize, isPostSessionTokens) {
+  | (true, _, _) => ConfirmCall
+  | (_, true, _) => CompleteAuthorize
+  | (_, _, true) => PostSessionTokens
+  | _ => RetrievePaymentIntent
   }
-  logApi(
-    ~optLogger,
-    ~url=uri,
-    ~apiLogType=Request,
-    ~eventName=initEventName,
-    ~logType=INFO,
-    ~logCategory=API,
-    ~isPaymentSession,
-  )
   let handleOpenUrl = url => {
     if isPaymentSession && mode != CardCVCElement {
       replaceRootHref(url, redirectionFlags)
@@ -387,15 +365,25 @@ let rec intentCall = (
       openUrl(url)
     }
   }
-  fetchApi(
-    uri,
-    ~method=fetchMethod,
-    ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
-    ~bodyStr,
-    ~sdkAuthorization,
+
+  LoggerContext.setSessionData(
+    ~paymentId=Utils.getPaymentIdOrExtractFromSdkAuth(~clientSecret, ~sdkAuthorization),
+    (),
+  )
+  SdkLogger.observeApi(
+    ~event=apiEvent,
+    ~url=uri,
+    ~details=bodyStr->LoggerUtils.payloadDetails,
+    ~call=() =>
+    fetchApi(
+      uri,
+      ~method=fetchMethod,
+      ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
+      ~bodyStr,
+      ~sdkAuthorization,
+    )
   )
   ->then(res => {
-    let statusCode = res->Fetch.Response.status
     let url = makeUrl(confirmParam.return_url)
     if isLegacyClientSecretFlow {
       url.searchParams.set("payment_intent_client_secret", clientSecret)
@@ -414,32 +402,23 @@ let rec intentCall = (
         Promise.make(
           (resolve, _) => {
             if isConfirm {
-              let paymentMethod = switch paymentType {
-              | Card => "CARD"
-              | _ =>
-                bodyStr
-                ->safeParse
-                ->getDictFromJson
-                ->getString("payment_method_type", "")
-              }
-              handleLogging(
-                ~optLogger,
-                ~value=data->JSON.stringify,
-                ~eventName=PAYMENT_FAILED,
-                ~paymentMethod,
+              let body = bodyStr->safeParse->getDictFromJson
+              let loggedPaymentMethod = LoggerTaxonomy.fromBackendPair(
+                ~method=body->getString(
+                  "payment_method",
+                  switch paymentType {
+                  | Card => "card"
+                  | _ => ""
+                  },
+                ),
+                ~methodType=body->getString("payment_method_type", ""),
+              )
+              SdkLogger.logLifecycle(
+                ~event=PaymentRejected,
+                ~failure=data,
+                ~paymentMethod=?loggedPaymentMethod,
               )
             }
-            logApi(
-              ~optLogger,
-              ~url=uri,
-              ~data,
-              ~statusCode,
-              ~apiLogType=Err,
-              ~eventName,
-              ~logType=ERROR,
-              ~logCategory=API,
-              ~isPaymentSession,
-            )
 
             let dict = data->getDictFromJson
             let errorObj = PaymentError.itemToObjMapper(dict)
@@ -465,18 +444,7 @@ let rec intentCall = (
       ->catch(err => {
         Promise.make(
           (resolve, _) => {
-            let exceptionMessage = err->formatException
-            logApi(
-              ~optLogger,
-              ~url=uri,
-              ~statusCode,
-              ~apiLogType=NoResponse,
-              ~data=exceptionMessage,
-              ~eventName,
-              ~logType=ERROR,
-              ~logCategory=API,
-              ~isPaymentSession,
-            )
+            let _ = err->formatException
             if counter >= 5 {
               if !isPaymentSession {
                 closePaymentLoaderIfAny()
@@ -511,7 +479,6 @@ let rec intentCall = (
                 ~bodyStr,
                 ~confirmParam: ConfirmType.confirmParams,
                 ~clientSecret,
-                ~optLogger,
                 ~handleUserError,
                 ~paymentType,
                 ~iframeId,
@@ -542,19 +509,22 @@ let rec intentCall = (
       ->then(data => {
         Promise.make(
           (resolve, _) => {
-            logApi(
-              ~optLogger,
-              ~url=uri,
-              ~statusCode,
-              ~apiLogType=Response,
-              ~eventName,
-              ~isPaymentSession,
-            )
-            let intent = PaymentConfirmTypes.itemToObjMapper(data->getDictFromJson)
+            let intentDict = data->getDictFromJson
+            let intent = PaymentConfirmTypes.itemToObjMapper(intentDict)
             let paymentMethod = switch paymentType {
             | Card => "CARD"
             | _ => intent.payment_method_type
             }
+            let loggedPaymentMethod = LoggerTaxonomy.fromBackendPair(
+              ~method=intentDict->getString(
+                "payment_method",
+                switch paymentType {
+                | Card => "card"
+                | _ => ""
+                },
+              ),
+              ~methodType=intent.payment_method_type,
+            )
 
             let url = makeUrl(confirmParam.return_url)
             if isLegacyClientSecretFlow {
@@ -608,27 +578,31 @@ let rec intentCall = (
 
             if intent.status == "requires_customer_action" {
               if intent.nextAction.type_ == "redirect_to_url" {
-                handleLogging(
-                  ~optLogger,
-                  ~value="",
-                  // ~internalMetadata=intent.nextAction.redirectToUrl,
-                  ~eventName=REDIRECTING_USER,
-                  ~paymentMethod,
+                let redirectOrigin = try {
+                  makeUrl(intent.nextAction.redirectToUrl).origin
+                } catch {
+                | _ => ""
+                }
+                SdkLogger.logLifecycle(
+                  ~event=CustomerRedirectStarted({
+                    nextAction: intent.nextAction.type_,
+                    redirectOrigin,
+                  }),
+                  ~paymentMethod=?loggedPaymentMethod,
                 )
                 handleOpenUrl(intent.nextAction.redirectToUrl)
               } else if intent.nextAction.type_ == "redirect_inside_popup" {
                 let popupUrl = intent.nextAction.popupUrl
                 let redirectResponseUrl = intent.nextAction.redirectResponseUrl
-                handleLogging(
-                  ~optLogger,
-                  ~value="",
-                  // ~internalMetadata=popupUrl,
-                  ~eventName=THREE_DS_POPUP_REDIRECTION,
-                  ~paymentMethod,
+                SdkLogger.logLifecycle(
+                  ~event=ThreeDsPopupRequested,
+                  ~paymentMethod=?loggedPaymentMethod,
                 )
                 let metaData = [
                   ("popupUrl", popupUrl->JSON.Encode.string),
                   ("redirectResponseUrl", redirectResponseUrl->JSON.Encode.string),
+                  ("clientSecret", clientSecret->JSON.Encode.string),
+                  ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
                 ]
                 messageParentWindow([
                   ("fullscreen", true->JSON.Encode.bool),
@@ -644,14 +618,11 @@ let rec intentCall = (
                 let dict = deepCopyDict(metadata)
                 dict->Dict.set("data", data)
                 dict->Dict.set("url", url.href->JSON.Encode.string)
-                handleLogging(
-                  ~optLogger,
-                  ~value="",
-                  // ~internalMetadata=dict->JSON.Encode.object->JSON.stringify,
-                  ~eventName=DISPLAY_BANK_TRANSFER_INFO_PAGE,
-                  ~paymentMethod,
-                )
                 if !isPaymentSession {
+                  SdkLogger.logLifecycle(
+                    ~event=BankTransferShown,
+                    ~paymentMethod=?loggedPaymentMethod,
+                  )
                   messageParentWindow([
                     ("fullscreen", true->JSON.Encode.bool),
                     ("param", `${intent.payment_method_type}BankTransfer`->JSON.Encode.string),
@@ -672,7 +643,7 @@ let rec intentCall = (
                   [
                     ("qrData", qrData->JSON.Encode.string),
                     ("rawQrData", rawQrData->JSON.Encode.string),
-                    ("paymentIntentId", clientSecret->JSON.Encode.string),
+                    ("clientSecret", clientSecret->JSON.Encode.string),
                     ("sdkAuthorization", sdkAuthorization->Option.getOr("")->JSON.Encode.string),
                     ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
                     ("headers", headerObj->JSON.Encode.object),
@@ -682,14 +653,8 @@ let rec intentCall = (
                     ("display_text", displayText->JSON.Encode.string),
                     ("border_color", borderColor->JSON.Encode.string),
                   ]->getJsonFromArrayOfJson
-                handleLogging(
-                  ~optLogger,
-                  ~value="",
-                  // ~internalMetadata=metaData->JSON.stringify,
-                  ~eventName=DISPLAY_QR_CODE_INFO_PAGE,
-                  ~paymentMethod,
-                )
                 if !isPaymentSession {
+                  SdkLogger.logLifecycle(~event=QrCodeShown, ~paymentMethod=?loggedPaymentMethod)
                   messageParentWindow([
                     ("fullscreen", true->JSON.Encode.bool),
                     ("param", `qrData`->JSON.Encode.string),
@@ -718,7 +683,7 @@ let rec intentCall = (
                 let metaData =
                   [
                     ("threeDSData", threeDsData->JSON.Encode.object),
-                    ("paymentIntentId", clientSecret->JSON.Encode.string),
+                    ("clientSecret", clientSecret->JSON.Encode.string),
                     ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
                     ("sdkAuthorization", sdkAuthorization->Option.getOr("")->JSON.Encode.string),
                     ("headers", headerObj->JSON.Encode.object),
@@ -726,14 +691,11 @@ let rec intentCall = (
                     ("iframeId", iframeId->JSON.Encode.string),
                   ]->Dict.fromArray
 
-                handleLogging(
-                  ~optLogger,
-                  ~value=do3dsMethodCall ? "Y" : "N",
-                  ~eventName=THREE_DS_METHOD,
-                  ~paymentMethod,
-                )
-
                 if do3dsMethodCall {
+                  SdkLogger.logLifecycle(
+                    ~event=ThreeDsMethodStarted,
+                    ~paymentMethod=?loggedPaymentMethod,
+                  )
                   messageParentWindow([
                     ("fullscreen", true->JSON.Encode.bool),
                     ("param", `3ds`->JSON.Encode.string),
@@ -782,7 +744,6 @@ let rec intentCall = (
                   ~isPaymentSession,
                   ~resolve,
                   ~data,
-                  ~optLogger,
                   ~paymentMethod,
                 )
               } else if intent.nextAction.type_ === "display_voucher_information" {
@@ -799,13 +760,12 @@ let rec intentCall = (
                     ("returnUrl", url.href->JSON.Encode.string),
                     ("paymentMethod", paymentMethod->JSON.Encode.string),
                     ("payment_intent_data", data),
+                    ("clientSecret", clientSecret->JSON.Encode.string),
+                    ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
                   ]->Dict.fromArray
-                handleLogging(
-                  ~optLogger,
-                  ~value="",
-                  // ~internalMetadata=metaData->JSON.Encode.object->JSON.stringify,
-                  ~eventName=DISPLAY_VOUCHER,
-                  ~paymentMethod,
+                SdkLogger.logLifecycle(
+                  ~event=VoucherShown,
+                  ~paymentMethod=?loggedPaymentMethod,
                 )
                 messageParentWindow([
                   ("fullscreen", true->JSON.Encode.bool),
@@ -881,15 +841,15 @@ let rec intentCall = (
                     ~message="Payment failed. Try again!",
                   )
                 }
-                if uri->String.includes("force_sync=true") {
-                  handleLogging(
-                    ~optLogger,
-                    ~value=intent.nextAction.type_,
-                    // ~internalMetadata=intent.nextAction.type_,
-                    ~eventName=REDIRECTING_USER,
-                    ~paymentMethod,
-                    ~logType=ERROR,
-                  )
+                let recovered = uri->String.includes("force_sync=true")
+                SdkLogger.logLifecycle(
+                  ~event=RedirectUnsupported({
+                    nextAction: intent.nextAction.type_,
+                    recovered,
+                  }),
+                  ~paymentMethod=?loggedPaymentMethod,
+                )
+                if recovered {
                   handleOpenUrl(url.href)
                 } else {
                   let failedSubmitResponse = getFailedSubmitResponse(
@@ -944,20 +904,23 @@ let rec intentCall = (
               }
               resolve(data)
             } else if intent.status != "" {
-              if intent.status === "succeeded" {
-                handleLogging(
-                  ~optLogger,
-                  ~value=intent.status,
-                  ~eventName=PAYMENT_SUCCESS,
-                  ~paymentMethod,
+              let outcome: SdkLogger.paymentOutcomeData = {
+                status: intent.status,
+                manualRetryAllowed: intent.manualRetryAllowed,
+              }
+              switch intent.status {
+              | "succeeded" =>
+                SdkLogger.logLifecycle(
+                  ~event=PaymentSucceeded(outcome),
+                  ~paymentMethod=?loggedPaymentMethod,
                 )
-              } else if intent.status === "failed" {
-                handleLogging(
-                  ~optLogger,
-                  ~value=intent.status,
-                  ~eventName=PAYMENT_FAILED,
-                  ~paymentMethod,
+              | "failed" =>
+                SdkLogger.logLifecycle(
+                  ~event=PaymentFailed(outcome),
+                  ~details=data->LoggerUtils.intentErrorDetails,
+                  ~paymentMethod=?loggedPaymentMethod,
                 )
+              | _ => ()
               }
               if intent.status === "failed" {
                 setIsManualRetryEnabled(_ => intent.manualRetryAllowed)
@@ -992,17 +955,7 @@ let rec intentCall = (
           Utils.getPaymentIdOrExtractFromSdkAuth(~clientSecret, ~sdkAuthorization),
         )
         url.searchParams.set("status", "failed")
-        let exceptionMessage = err->formatException
-        logApi(
-          ~optLogger,
-          ~url=uri,
-          ~eventName,
-          ~apiLogType=NoResponse,
-          ~data=exceptionMessage,
-          ~logType=ERROR,
-          ~logCategory=API,
-          ~isPaymentSession,
-        )
+        let _ = err->formatException
         if counter >= 5 {
           if !isPaymentSession {
             closePaymentLoaderIfAny()
@@ -1035,7 +988,6 @@ let rec intentCall = (
             ~bodyStr,
             ~confirmParam: ConfirmType.confirmParams,
             ~clientSecret,
-            ~optLogger,
             ~handleUserError,
             ~paymentType,
             ~iframeId,
@@ -1073,7 +1025,7 @@ let rec intentCall = (
   })
 }
 
-let usePaymentSync = (optLogger: option<HyperLoggerTypes.loggerMake>, paymentType: payment) => {
+let usePaymentSync = (paymentType: payment) => {
   open JotaiAtoms
   let paymentMethodList = Jotai.useAtomValue(paymentMethodList)
   let keys = Jotai.useAtomValue(keys)
@@ -1112,7 +1064,6 @@ let usePaymentSync = (optLogger: option<HyperLoggerTypes.loggerMake>, paymentTyp
           ~bodyStr="",
           ~confirmParam: ConfirmType.confirmParams,
           ~clientSecret,
-          ~optLogger,
           ~handleUserError,
           ~paymentType,
           ~iframeId,
@@ -1139,27 +1090,6 @@ let usePaymentSync = (optLogger: option<HyperLoggerTypes.loggerMake>, paymentTyp
   }
 }
 
-let maskStr = str => str->Js.String2.replaceByRe(%re(`/\S/g`), "x")
-
-let rec maskPayload = payloadJson => {
-  switch payloadJson->JSON.Classify.classify {
-  | Object(valueDict) =>
-    valueDict
-    ->Dict.toArray
-    ->Array.map(entry => {
-      let (key, value) = entry
-      (key, maskPayload(value))
-    })
-    ->getJsonFromArrayOfJson
-
-  | Array(arr) => arr->Array.map(maskPayload)->JSON.Encode.array
-  | String(valueStr) => valueStr->maskStr->JSON.Encode.string
-  | Number(float) => Float.toString(float)->maskStr->JSON.Encode.string
-  | Bool(bool) => bool->getStringFromBool->JSON.Encode.string
-  | Null => JSON.Encode.string("null")
-  }
-}
-
 let useCompleteAuthorizeHandler = () => {
   open JotaiAtoms
 
@@ -1174,7 +1104,6 @@ let useCompleteAuthorizeHandler = () => {
     ~bodyArr,
     ~confirmParam: ConfirmType.confirmParams,
     ~iframeId,
-    ~optLogger,
     ~handleUserError,
     ~paymentType,
     ~sdkHandleOneClickConfirmPayment,
@@ -1232,7 +1161,6 @@ let useCompleteAuthorizeHandler = () => {
         ~bodyStr,
         ~confirmParam,
         ~clientSecret=cs,
-        ~optLogger,
         ~handleUserError,
         ~paymentType,
         ~iframeId,
@@ -1253,7 +1181,7 @@ let useCompleteAuthorizeHandler = () => {
     }
 }
 
-let useCompleteAuthorize = (optLogger, paymentType) => {
+let useCompleteAuthorize = paymentType => {
   let completeAuthorizeHandler = useCompleteAuthorizeHandler()
   let keys = Jotai.useAtomValue(JotaiAtoms.keys)
   let paymentMethodList = Jotai.useAtomValue(JotaiAtoms.paymentMethodList)
@@ -1271,7 +1199,6 @@ let useCompleteAuthorize = (optLogger, paymentType) => {
         ~bodyArr,
         ~confirmParam,
         ~iframeId,
-        ~optLogger,
         ~handleUserError,
         ~paymentType,
         ~sdkHandleOneClickConfirmPayment=keys.sdkHandleOneClickConfirmPayment,
@@ -1282,7 +1209,7 @@ let useCompleteAuthorize = (optLogger, paymentType) => {
     }
 }
 
-let useRedsysCompleteAuthorize = optLogger => {
+let useRedsysCompleteAuthorize = () => {
   let completeAuthorizeHandler = useCompleteAuthorizeHandler()
   (
     ~handleUserError=false,
@@ -1298,7 +1225,6 @@ let useRedsysCompleteAuthorize = optLogger => {
       ~bodyArr,
       ~confirmParam,
       ~iframeId,
-      ~optLogger,
       ~handleUserError,
       ~paymentType=Card,
       ~sdkHandleOneClickConfirmPayment=false,
@@ -1307,7 +1233,7 @@ let useRedsysCompleteAuthorize = optLogger => {
     )
 }
 
-let usePaymentIntent = (optLogger, paymentType) => {
+let usePaymentIntent = paymentType => {
   open JotaiAtoms
   open Promise
   let url = RescriptReactRouter.useUrl()
@@ -1366,46 +1292,15 @@ let usePaymentIntent = (optLogger, paymentType) => {
       let uri = `${endpoint}/${path}`
 
       let callIntent = body => {
-        let contentLength = body->String.length->Int.toString
-        let maskedPayload =
-          body->safeParseOpt->Option.getOr(JSON.Encode.null)->maskPayload->JSON.stringify
-        let _loggerPayload =
-          [
-            ("payload", maskedPayload->JSON.Encode.string),
-            (
-              "headers",
-              headers
-              ->Array.map(header => {
-                let (key, value) = header
-                (key, value->JSON.Encode.string)
-              })
-              ->getJsonFromArrayOfJson,
-            ),
-          ]
-          ->getJsonFromArrayOfJson
-          ->JSON.stringify
         switch paymentType {
-        | Card =>
-          handleLogging(
-            ~optLogger,
-            // ~internalMetadata=loggerPayload,
-            ~value=contentLength,
-            ~eventName=PAYMENT_ATTEMPT,
-            ~paymentMethod="CARD",
-          )
+        | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
         | _ =>
-          bodyArr->Array.forEach(((str, json)) => {
-            if str === "payment_method_type" {
-              handleLogging(
-                ~optLogger,
-                ~value=contentLength,
-                // ~internalMetadata=loggerPayload,
-                ~eventName=PAYMENT_ATTEMPT,
-                ~paymentMethod=json->getStringFromJson(""),
-              )
-            }
-            ()
-          })
+          bodyArr
+          ->Array.find(((key, _)) => key === "payment_method_type")
+          ->Option.flatMap(((_, json)) =>
+            json->getStringFromJson("")->LoggerTaxonomy.fromBackendValue
+          )
+          ->Option.forEach(LoggerContext.setPaymentMethod)
         }
         if blockConfirm && GlobalVars.isInteg {
           Console.warn2("CONFIRM IS BLOCKED - Body", body)
@@ -1421,7 +1316,6 @@ let usePaymentIntent = (optLogger, paymentType) => {
             ~bodyStr=body,
             ~confirmParam: ConfirmType.confirmParams,
             ~clientSecret,
-            ~optLogger,
             ~handleUserError,
             ~paymentType,
             ~iframeId,
@@ -1519,7 +1413,6 @@ let fetchSessions = async (
   ~publishableKey,
   ~wallets=[],
   ~isDelayedSessionToken=false,
-  ~logger,
   ~customPodUri=?,
   ~endpoint,
   ~isPaymentSession=false,
@@ -1565,8 +1458,7 @@ let fetchSessions = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=SESSIONS_CALL,
-    ~logger,
+    ~event=Sessions,
     ~bodyStr=body->JSON.stringify,
     ~headers,
     ~method=#POST,
@@ -1582,7 +1474,6 @@ let fetchSessions = async (
 let confirmPayout = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
   ~body,
@@ -1612,8 +1503,7 @@ let confirmPayout = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=CONFIRM_PAYOUT_CALL,
-    ~logger,
+    ~event=ConfirmPayoutCall,
     ~bodyStr=body->JSON.stringify,
     ~method=#POST,
     ~customPodUri=Some(customPodUri),
@@ -1626,7 +1516,6 @@ let confirmPayout = async (
 let createPaymentMethod = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
   ~body,
@@ -1655,8 +1544,7 @@ let createPaymentMethod = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=CREATE_CUSTOMER_PAYMENT_METHODS_CALL,
-    ~logger,
+    ~event=CreateCustomerPaymentMethods,
     ~bodyStr=body->JSON.stringify,
     ~method=#POST,
     ~customPodUri=Some(customPodUri),
@@ -1669,7 +1557,6 @@ let createPaymentMethod = async (
 let fetchClientList = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
   ~isPaymentSession=false,
@@ -1693,8 +1580,7 @@ let fetchClientList = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=CLIENT_LIST_CALL,
-    ~logger,
+    ~event=ClientList,
     ~method=#GET,
     ~customPodUri=Some(customPodUri),
     ~publishableKey=Some(publishableKey),
@@ -1711,7 +1597,6 @@ let paymentIntentForPaymentSession = (
   ~payload,
   ~publishableKey,
   ~clientSecret,
-  ~logger,
   ~customPodUri,
   ~redirectionFlags,
   ~isPaymentSession=true,
@@ -1770,7 +1655,6 @@ let paymentIntentForPaymentSession = (
     ~bodyStr,
     ~confirmParam: ConfirmType.confirmParams,
     ~clientSecret,
-    ~optLogger=Some(logger),
     ~handleUserError=false,
     ~paymentType,
     ~iframeId="",
@@ -1792,7 +1676,6 @@ let callAuthLink = async (
   ~paymentMethodType,
   ~pmAuthConnectorsArr,
   ~iframeId,
-  ~logger,
   ~sdkAuthorization=None,
 ) => {
   let uri = APIUtils.generateApiUrlV1(
@@ -1852,8 +1735,7 @@ let callAuthLink = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=PAYMENT_METHODS_AUTH_LINK_CALL,
-    ~logger,
+    ~event=PaymentMethodsAuthLink,
     ~bodyStr=body->JSON.stringify,
     ~method=#POST,
     ~publishableKey=Some(publishableKey),
@@ -1869,7 +1751,6 @@ let callAuthExchange = async (
   ~paymentMethodType,
   ~publishableKey,
   ~setOptionValue: (PaymentType.options => PaymentType.options) => unit,
-  ~logger,
   ~sdkAuthorization=None,
 ) => {
   open Promise
@@ -1912,7 +1793,6 @@ let callAuthExchange = async (
     fetchClientList(
       ~clientSecret=clientSecret->Option.getOr(""),
       ~publishableKey,
-      ~logger,
       ~customPodUri="",
       ~endpoint,
       ~sdkAuthorization,
@@ -1942,8 +1822,7 @@ let callAuthExchange = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=PAYMENT_METHODS_AUTH_EXCHANGE_CALL,
-    ~logger,
+    ~event=PaymentMethodsAuthExchange,
     ~bodyStr=body->JSON.stringify,
     ~method=#POST,
     ~publishableKey=Some(publishableKey),
@@ -1958,7 +1837,6 @@ let calculateTax = async (
   ~clientSecret,
   ~paymentMethodType,
   ~shippingAddress,
-  ~logger,
   ~customPodUri,
   ~sessionId,
   ~sdkAuthorization,
@@ -1989,8 +1867,7 @@ let calculateTax = async (
   sessionId->Option.mapOr((), id => body->Array.push(("session_id", id))->ignore)
   await fetchApiWithLogging(
     uri,
-    ~eventName=EXTERNAL_TAX_CALCULATION,
-    ~logger,
+    ~event=TaxCalculation,
     ~bodyStr=body->getJsonFromArrayOfJson->JSON.stringify,
     ~method=#POST,
     ~customPodUri=Some(customPodUri),
@@ -2002,7 +1879,6 @@ let calculateTax = async (
 }
 
 let usePostSessionTokens = (
-  optLogger,
   paymentType: payment,
   paymentMethod: PaymentMethodCollectTypes.paymentMethod,
 ) => {
@@ -2060,46 +1936,15 @@ let usePostSessionTokens = (
       let uri = `${endpoint}/payments/${paymentIntentId}/post_session_tokens`
 
       let callIntent = body => {
-        let contentLength = body->String.length->Int.toString
-        let maskedPayload =
-          body->safeParseOpt->Option.getOr(JSON.Encode.null)->maskPayload->JSON.stringify
-        let _loggerPayload =
-          [
-            ("payload", maskedPayload->JSON.Encode.string),
-            (
-              "headers",
-              headers
-              ->Array.map(header => {
-                let (key, value) = header
-                (key, value->JSON.Encode.string)
-              })
-              ->getJsonFromArrayOfJson,
-            ),
-          ]
-          ->getJsonFromArrayOfJson
-          ->JSON.stringify
         switch paymentType {
-        | Card =>
-          handleLogging(
-            ~optLogger,
-            // ~internalMetadata=loggerPayload,
-            ~value=contentLength,
-            ~eventName=PAYMENT_ATTEMPT,
-            ~paymentMethod="CARD",
-          )
+        | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
         | _ =>
-          bodyArr->Array.forEach(((str, json)) => {
-            if str === "payment_method_type" {
-              handleLogging(
-                ~optLogger,
-                ~value=contentLength,
-                // ~internalMetadata=loggerPayload,
-                ~eventName=PAYMENT_ATTEMPT,
-                ~paymentMethod=json->getStringFromJson(""),
-              )
-            }
-            ()
-          })
+          bodyArr
+          ->Array.find(((key, _)) => key === "payment_method_type")
+          ->Option.flatMap(((_, json)) =>
+            json->getStringFromJson("")->LoggerTaxonomy.fromBackendValue
+          )
+          ->Option.forEach(LoggerContext.setPaymentMethod)
         }
 
         intentCall(
@@ -2109,7 +1954,6 @@ let usePostSessionTokens = (
           ~bodyStr=body,
           ~confirmParam: ConfirmType.confirmParams,
           ~clientSecret,
-          ~optLogger,
           ~handleUserError,
           ~paymentType,
           ~iframeId,
@@ -2200,10 +2044,9 @@ let usePostSessionTokens = (
 let fetchEnabledAuthnMethodsToken = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
-  ~isPaymentSession=false,
+  ~isPaymentSession as _=false,
   ~profileId,
   ~authenticationId,
 ) => {
@@ -2225,32 +2068,33 @@ let fetchEnabledAuthnMethodsToken = async (
 
   let headers = [("x-profile-id", profileId)]->Dict.fromArray
 
-  let onSuccess = data => data
-
-  let onFailure = _ => JSON.Encode.null
-
-  await fetchApiWithLogging(
-    uri,
-    ~eventName=ENABLED_AUTHN_METHODS_TOKEN_CALL,
-    ~logger,
-    ~method=#POST,
-    ~bodyStr=body->JSON.stringify,
-    ~headers,
-    ~customPodUri=Some(customPodUri),
-    ~publishableKey=Some(publishableKey),
-    ~onSuccess,
-    ~onFailure,
-    ~isPaymentSession,
+  let response = await ClickToPayLogger.observeApi(
+    ~event=EnabledAuthnMethodsToken,
+    ~url=uri,
+    ~call=() =>
+      Fetch.fetch(
+        uri,
+        {
+          method: #POST,
+          body: Fetch.Body.string(body->JSON.stringify),
+          headers: getHeaders(
+            ~headers,
+            ~uri,
+            ~customPodUri=Some(customPodUri),
+            ~publishableKey=Some(publishableKey),
+          ),
+        },
+      ),
   )
+  await response->Fetch.Response.json
 }
 
 let fetchEligibilityCheck = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
-  ~isPaymentSession=false,
+  ~isPaymentSession as _=false,
   ~profileId,
   ~authenticationId,
   ~bodyArr: array<(string, Core__JSON.t)>,
@@ -2276,32 +2120,30 @@ let fetchEligibilityCheck = async (
 
   let headers = [("x-profile-id", profileId)]->Dict.fromArray
 
-  let onSuccess = data => data
-
-  let onFailure = _ => JSON.Encode.null
-
-  await fetchApiWithLogging(
-    uri,
-    ~eventName=ELIGIBILITY_CHECK_CALL,
-    ~logger,
-    ~method=#POST,
-    ~bodyStr=body->JSON.stringify,
-    ~headers,
-    ~customPodUri=Some(customPodUri),
-    ~publishableKey=Some(publishableKey),
-    ~onSuccess,
-    ~onFailure,
-    ~isPaymentSession,
+  let response = await ClickToPayLogger.observeApi(~event=EligibilityCheck, ~url=uri, ~call=() =>
+    Fetch.fetch(
+      uri,
+      {
+        method: #POST,
+        body: Fetch.Body.string(body->JSON.stringify),
+        headers: getHeaders(
+          ~headers,
+          ~uri,
+          ~customPodUri=Some(customPodUri),
+          ~publishableKey=Some(publishableKey),
+        ),
+      },
+    )
   )
+  await response->Fetch.Response.json
 }
 
 let fetchAuthenticationSync = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
-  ~isPaymentSession=false,
+  ~isPaymentSession as _=false,
   ~profileId,
   ~authenticationId,
   ~merchantId,
@@ -2329,23 +2171,22 @@ let fetchAuthenticationSync = async (
 
   let headers = [("x-profile-id", profileId)]->Dict.fromArray
 
-  let onSuccess = data => data
-
-  let onFailure = err => err
-
-  await fetchApiWithLogging(
-    uri,
-    ~eventName=AUTHENTICATION_SYNC_CALL,
-    ~logger,
-    ~method=#POST,
-    ~bodyStr=body->JSON.stringify,
-    ~headers,
-    ~customPodUri=Some(customPodUri),
-    ~publishableKey=Some(publishableKey),
-    ~onSuccess,
-    ~onFailure,
-    ~isPaymentSession,
+  let response = await ClickToPayLogger.observeApi(~event=AuthenticationSync, ~url=uri, ~call=() =>
+    Fetch.fetch(
+      uri,
+      {
+        method: #POST,
+        body: Fetch.Body.string(body->JSON.stringify),
+        headers: getHeaders(
+          ~headers,
+          ~uri,
+          ~customPodUri=Some(customPodUri),
+          ~publishableKey=Some(publishableKey),
+        ),
+      },
+    )
   )
+  await response->Fetch.Response.json
 }
 
 let getConstructedPaymentMethodName = (~paymentMethod, ~paymentMethodType) => {
@@ -2365,7 +2206,6 @@ let getConstructedPaymentMethodName = (~paymentMethod, ~paymentMethodType) => {
 let fetchSdkConfigs = async (
   ~clientSecret,
   ~publishableKey,
-  ~logger,
   ~customPodUri,
   ~endpoint,
   ~sdkAuthorization=None,
@@ -2389,8 +2229,7 @@ let fetchSdkConfigs = async (
 
   await fetchApiWithLogging(
     uri,
-    ~eventName=SDK_CONFIGS_CALL,
-    ~logger,
+    ~event=SdkConfigs,
     ~method=#GET,
     ~customPodUri=Some(customPodUri),
     ~publishableKey=Some(publishableKey),
