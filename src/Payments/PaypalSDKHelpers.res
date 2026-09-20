@@ -2,6 +2,39 @@ open PaypalSDKTypes
 open Utils
 open TaxCalculation
 
+// Render the PayPal Buttons component with SdkLogger Function instrumentation
+// (Started/Done/Failed). Shared by the native and Braintree PayPal flows, which
+// differ only in the extra `details` they attach.
+let renderPaypalButtons = (buttons: some, ~details=[]) => {
+  let startedAt = Date.now()
+  SdkLogger.logFunction(
+    ~event=PaypalButtonsRender,
+    ~outcome=Started,
+    ~details,
+    ~paymentMethod=Wallet(PaypalSdk),
+  )
+  try {
+    buttons.render("#paypal-button")
+    SdkLogger.logFunction(
+      ~event=PaypalButtonsRender,
+      ~outcome=Done,
+      ~startedAt,
+      ~details,
+      ~paymentMethod=Wallet(PaypalSdk),
+    )
+  } catch {
+  | err =>
+    SdkLogger.logFunction(
+      ~event=PaypalButtonsRender,
+      ~outcome=Failed,
+      ~startedAt,
+      ~exn=err->Identity.anyTypeToJson,
+      ~details,
+      ~paymentMethod=Wallet(PaypalSdk),
+    )
+  }
+}
+
 let loadPaypalSDK = (
   ~sdkHandleOneClickConfirmPayment as _,
   ~buttonStyle: PaypalSDKTypes.style,
@@ -241,7 +274,7 @@ let loadPaypalSDK = (
     onClick: () => {
       SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(PaypalSdk))
     },
-  }).render("#paypal-button")
+  })->renderPaypalButtons
   areOneClickWalletsRendered(prev => {
     ...prev,
     isPaypal: true,
@@ -292,7 +325,6 @@ let loadBraintreePaypalSdk = (
                   style: buttonStyle,
                   fundingSource: paypal["FUNDING"]["PAYPAL"],
                   createBillingAgreement: () => {
-                    //Paypal Clicked
                     messageParentWindow([
                       ("fullscreen", true->JSON.Encode.bool),
                       ("param", "paymentloader"->JSON.Encode.string),
@@ -341,9 +373,12 @@ let loadBraintreePaypalSdk = (
                     handleCloseLoader()
                   },
                   onClick: () => {
-                    SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(PaypalSdk))
+                    SdkLogger.logUser(
+                      ~event=ExpressCheckoutClicked,
+                      ~paymentMethod=Wallet(PaypalSdk),
+                    )
                   },
-                }).render("#paypal-button")
+                })->renderPaypalButtons(~details=[("connector", "braintree"->JSON.Encode.string)])
                 areOneClickWalletsRendered(
                   prev => {
                     ...prev,

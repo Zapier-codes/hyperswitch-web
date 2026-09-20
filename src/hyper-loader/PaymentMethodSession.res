@@ -33,8 +33,6 @@ let tokenizationInFlightResult = (~locale: string="en", ()): JSON.t =>
 let buildConfirmResult = CardFormCoordinator.buildConfirmResult
 let isErrorResult = CardFormCoordinator.isErrorResult
 
-// vaultDetails is a merchant prop and so is camelCase, but the session it is packed into
-// mirrors the backend payload that VaultHelpers reads, which is snake_case.
 let toSessionVaultData = (vaultData: JSON.t): JSON.t => {
   let merchantData = vaultData->getDictFromJson
   let sessionData = Dict.make()
@@ -496,6 +494,8 @@ let make = (options: JSON.t): initPaymentMethodSession => {
           savedCardBrandRef := brand
         }
       },
+      ~scope=VaultForm,
+      ~vaultProvider=detectVaultType(),
     )
 
     attachFieldListener()
@@ -550,15 +550,17 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                 }
               }
 
+              let vgsFieldDetails = [
+                ("field", fieldType->JSON.Encode.string),
+                ("vault", "vgs"->JSON.Encode.string),
+              ]
+
               let handle: fieldHandle = {
                 mount: selector => {
                   uniqueSelectorRef := Some(selector)
                   HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Mount),
-                    ~details=[
-                      ("field", fieldType->JSON.Encode.string),
-                      ("vault", "vgs"->JSON.Encode.string),
-                    ],
+                    ~details=vgsFieldDetails,
                     ~failureOf=_ => None,
                     ~call=() =>
                       broker.mountField(~fieldId, ~fieldType, ~selector, ~options=optionsForBroker),
@@ -573,33 +575,39 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                   ->ignore
                 },
                 unmount: () =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Unmount),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => {
                       broker.unmountField(~fieldId)
                       uniqueSelectorRef := None
+                      SdkLogger.logState(
+                        ~event=CardFieldUnmounted({scope: VaultForm, field: fieldType}),
+                      )
                     },
                   ),
                 destroy: () =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Destroy),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => {
                       broker.unmountField(~fieldId)
                       uniqueSelectorRef := None
+                      SdkLogger.logState(
+                        ~event=CardFieldUnmounted({scope: VaultForm, field: fieldType}),
+                      )
                     },
                   ),
                 update: newOptions =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Update),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => broker.updateField(~fieldId, ~options=newOptions),
                   ),
                 focus: () =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Focus),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => {
                   switch getFieldHandle() {
                   | Some(vgsFieldHandle) =>
@@ -620,9 +628,9 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                     },
                   ),
                 blur: () =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Blur),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => {
                   switch getFieldHandle() {
                   | Some(vgsFieldHandle) =>
@@ -643,9 +651,9 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                     },
                   ),
                 clear: () =>
-                  HyperLoaderLogger.logMerchantCall(
+                  HyperLoaderLogger.observeMerchantCall(
                     ~event=HyperLoaderLogger.CardField(Clear),
-                    ~details=[("field", fieldType->JSON.Encode.string), ("vault", "vgs"->JSON.Encode.string)],
+                    ~details=vgsFieldDetails,
                     ~call=() => {
                   switch getFieldHandle() {
                   | Some(vgsFieldHandle) =>
@@ -714,7 +722,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
   }
 
   let create = (fieldType: string, options: JSON.t): fieldHandle =>
-    HyperLoaderLogger.logMerchantCall(
+    HyperLoaderLogger.observeMerchantCall(
       ~event=HyperLoaderLogger.CardForm(Create),
       ~details=[
         ("field", fieldType->JSON.Encode.string),
@@ -724,6 +732,10 @@ let make = (options: JSON.t): initPaymentMethodSession => {
     )
 
   let update = (_options: JSON.t): unit => {
+    HyperLoaderLogger.logMerchantIssue(
+      ~issue=ImmutableAfterMount,
+      ~details=[("method", "update"->JSON.Encode.string)],
+    )
     Console.warn(
       "[PaymentMethodSession] session options are fixed at creation; create a new session to change them",
     )
@@ -731,6 +743,10 @@ let make = (options: JSON.t): initPaymentMethodSession => {
 
   let on = (event: string, cb: JSON.t => unit): unit => {
     eventCallbacksRef.contents->Dict.set(event, cb)
+    HyperLoaderLogger.logMerchantCall(
+      ~event=HyperLoaderLogger.PaymentMethodsSession(On),
+      ~details=[("event", event->JSON.Encode.string)],
+    )
   }
 
   let tokenizeVgsFlowA = (): promise<JSON.t> => {
@@ -951,24 +967,12 @@ let make = (options: JSON.t): initPaymentMethodSession => {
     }
   }
 
-  // Only the outcome and its error code are logged — never the card values.
-  let tokenizeFailureSummary = (result: JSON.t): option<LoggerTypes.errorSummary> =>
-    result
-    ->getDictFromJson
-    ->getDictFromDict("error")
-    ->Dict.get("code")
-    ->Option.map(code => {
-      LoggerTypes.name: code->JSON.Decode.string->Option.getOr("RETURNED_ERROR_RESPONSE"),
-      message: None,
-      details: [],
-    })
-
   let tokenize = (): promise<JSON.t> =>
     HyperLoaderLogger.observeMerchantCall(
       ~event=HyperLoaderLogger.PaymentMethodsSession(Tokenize),
       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
       ~details=[("vault", detectVaultType()->JSON.Encode.string)],
-      ~failureOf=tokenizeFailureSummary,
+      ~failureOf=errorCodeFailureSummary,
       ~call=() =>
         if sessionStateRef.contents != Active {
           Promise.resolve(sessionConsumedResult(~locale, ()))
@@ -1030,7 +1034,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
     )
 
   let deinit = (): unit =>
-    HyperLoaderLogger.logMerchantCall(
+    HyperLoaderLogger.observeMerchantCall(
       ~event=HyperLoaderLogger.PaymentMethodsSession(Deinit),
       ~call=() => {
         SdkLogger.logState(~event=CardFormUnmounted({scope: VaultForm}))
@@ -1057,7 +1061,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
           )
           vgsBrokerRef := None
 
-          switch Window.querySelector(`script[data-vgs-script-loaded]`)->Nullable.toOption {
+          switch Window.querySelector(VGSVaultBroker.vgsScriptSelector)->Nullable.toOption {
           | Some(script) =>
             try {
               script->Window.remove
@@ -1107,14 +1111,19 @@ let make = (options: JSON.t): initPaymentMethodSession => {
       },
     )
 
-  let createCardForm = (): vaultCardForm => {
-    create,
-    on,
-    tokenize,
-    deinit,
-    update,
-    fields,
-  }
+  let createCardForm = (): vaultCardForm =>
+    HyperLoaderLogger.observeMerchantCall(
+      ~event=HyperLoaderLogger.PaymentMethodsSession(CreateCardForm),
+      ~details=[("vault", detectVaultType()->JSON.Encode.string)],
+      ~call=(): vaultCardForm => {
+        create,
+        on,
+        tokenize,
+        deinit,
+        update,
+        fields,
+      },
+    )
 
   {
     createCardForm,

@@ -164,9 +164,9 @@ let make = (
                   className="cursor-pointer ml-4 mb-[6px]"
                   style={color: themeObj.colorPrimary}
                   onClick={event => {
-                      ReactEvent.Mouse.stopPropagation(event)
-                      SdkLogger.logUser(~event=SavedMethodUpdateRequested)
-                      handleUpdate(paymentItem)->ignore
+                    ReactEvent.Mouse.stopPropagation(event)
+                    SdkLogger.logUser(~event=SavedMethodUpdateRequested)
+                    handleUpdate(paymentItem)->ignore
                   }}
                 >
                   {React.string("Save")}

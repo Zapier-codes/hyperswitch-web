@@ -1,5 +1,4 @@
 type pmAuthConnector = PLAID | NONE
-type isPmAuthConnectorReady = {plaid: bool}
 let pmAuthNameToTypeMapper = authConnectorName => {
   switch authConnectorName {
   | "plaid" => PLAID

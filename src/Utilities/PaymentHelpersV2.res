@@ -26,6 +26,7 @@ let intentCall = (
   ~isPaymentSession=false,
   ~isCallbackUsedVal=?,
   ~redirectionFlags,
+  ~apiEvent: SdkLogger.apiEvent,
 ) => {
   open Promise
   let isConfirm = uri->String.includes("/confirm")
@@ -36,7 +37,6 @@ let intentCall = (
       openUrl(url)
     }
   }
-  let apiEvent: SdkLogger.apiEvent = isConfirm ? ConfirmCall : UpdatePaymentMethod
   SdkLogger.observeApi(~event=apiEvent, ~url=uri, ~call=() =>
     fetchApi(
       uri,
@@ -94,10 +94,9 @@ let intentCall = (
           },
         )->then(resolve)
       })
-      ->catch(err => {
+      ->catch(_ => {
         Promise.make(
           (resolve, _) => {
-            let _exceptionMessage = err->formatException
             if !isPaymentSession {
               closePaymentLoaderIfAny()
               postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
@@ -121,11 +120,7 @@ let intentCall = (
         Promise.make(
           (resolve, _) => {
             let intent = PaymentConfirmTypesV2.itemToPMMConfirmMapper(data->getDictFromJson)
-            let paymentMethod = switch paymentType {
-            | Card => "CARD"
-            | _ => "CARD"
-            }
-            let loggedPaymentMethod = paymentMethod->LoggerTaxonomy.fromBackendValue
+            let loggedPaymentMethod = "card"->LoggerTaxonomy.fromBackendValue
 
             let url = makeUrl(confirmParam.return_url)
             url.searchParams.set("status", intent.authenticationDetails.status)
@@ -234,12 +229,11 @@ let intentCall = (
       })
     }
   })
-  ->catch(err => {
+  ->catch(_ => {
     Promise.make((resolve, _) => {
       try {
         let url = makeUrl(confirmParam.return_url)
         url.searchParams.set("status", "failed")
-        let _exceptionMessage = err->formatException
 
         if !isPaymentSession {
           closePaymentLoaderIfAny()
@@ -334,7 +328,7 @@ let deletePaymentMethodV2 = (
   SdkLogger.observeApi(
     ~event=DeletePaymentMethod,
     ~url=uri,
-    ~details=[("http_method", "DELETE"->JSON.Encode.string)],
+    ~details=[("http_method", "delete"->JSON.Encode.string)],
     ~call=() =>
       fetchApi(
         uri,
@@ -372,7 +366,7 @@ let updatePaymentMethod = (~bodyArr, ~pmSessionId, ~customPodUri, ~sdkAuthorizat
   SdkLogger.observeApi(
     ~event=UpdatePaymentMethod,
     ~url=uri,
-    ~details=[("http_method", "PUT"->JSON.Encode.string)],
+    ~details=[("http_method", "put"->JSON.Encode.string)],
     ~call=() =>
       fetchApi(
         uri,
@@ -440,6 +434,7 @@ let useSaveCard = (paymentType: payment) => {
           ~sdkHandleOneClickConfirmPayment=keys.sdkHandleOneClickConfirmPayment,
           ~isCallbackUsedVal,
           ~redirectionFlags,
+          ~apiEvent=SavePaymentMethod,
         )->ignore
       }
 
@@ -497,6 +492,7 @@ let useUpdateCard = (paymentType: payment) => {
           ~sdkHandleOneClickConfirmPayment=keys.sdkHandleOneClickConfirmPayment,
           ~isCallbackUsedVal,
           ~redirectionFlags,
+          ~apiEvent=UpdatePaymentMethod,
         )->ignore
       }
 
@@ -522,7 +518,7 @@ let savePaymentMethod = (~bodyArr, ~pmSessionId, ~sdkAuthorization) => {
   SdkLogger.observeApi(
     ~event=SavePaymentMethod,
     ~url=uri,
-    ~details=[("http_method", "POST"->JSON.Encode.string)],
+    ~details=[("http_method", "post"->JSON.Encode.string)],
     ~call=() =>
       fetchApi(
         uri,

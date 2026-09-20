@@ -295,9 +295,6 @@ let make = (
   | None => ("", "", cardBrand, "", "")
   }
 
-  // Preserve the pre-split, unconditional `paymentMethodInfo` message. The
-  // legacy top-level hook cannot observe nested card state, so Card now emits
-  // it here while all non-card methods continue using that hook.
   React.useEffect(() => {
     if !isSavedCardFlow && !isBancontact {
       switch cardInfo {
@@ -394,8 +391,6 @@ let make = (
     None
   }, (isSavedCardFlow, hasCardFieldStatus, cardFieldsComplete, isInstallmentValid))
 
-  // The legacy direct Card flow emitted this only after all three validation
-  // states had resolved. Preserve that timing at the public iframe boundary.
   React.useEffect(() => {
     if (
       !isSavedCardFlow &&
@@ -684,9 +679,9 @@ let make = (
 
     switch clickToPayProvider {
     | MASTERCARD =>
-      try {
-        (
-          async () => {
+      (
+        async () => {
+          try {
             let encryptedResult = await ClickToPayHelpers.encryptCardForClickToPay(
               ~cardNumber=cardNumber->CardValidations.clearSpaces,
               ~expiryMonth=month,
@@ -722,12 +717,15 @@ let make = (
               )
             | Error(_) => ()
             }
+          } catch {
+          | err =>
+            ClickToPayLogger.logLifecycle(
+              ~event=CheckoutFailed({provider: MastercardUctp}),
+              ~exn=err,
+            )
           }
-        )()->ignore
-      } catch {
-      | err =>
-        ClickToPayLogger.logLifecycle(~event=CheckoutFailed, ~provider=MastercardUctp, ~exn=err)
-      }
+        }
+      )()->ignore
     | VISA =>
       let payload = [
         convertKeyValueToJsonStringPair(
@@ -774,7 +772,7 @@ let make = (
             )
           } catch {
           | err =>
-            ClickToPayLogger.logLifecycle(~event=CheckoutFailed, ~provider=VisaUctp, ~exn=err)
+            ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}), ~exn=err)
           }
         }
       )()->ignore
@@ -787,9 +785,6 @@ let make = (
       let json = ev.data->safeParse
       let confirm = json->getDictFromJson->ConfirmType.itemToObjMapper
       if confirm.doSubmit && !hasCardFieldStatus {
-        // The public Payment Element can become ready before the nested collector has
-        // installed its submit listener. Settle the merchant promise instead of posting a
-        // message that could be dropped during that startup window.
         postFailedSubmitResponse(
           ~errortype="validation_error",
           ~message=localeString.enterFieldsText,

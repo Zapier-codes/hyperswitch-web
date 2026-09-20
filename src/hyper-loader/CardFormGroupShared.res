@@ -97,9 +97,6 @@ let openFieldPort = (
   flushPendingPorts(channel)
 }
 
-// Merges a field's `create()` subscriptionEvents into the group-level union.
-// Returns true when the union actually grew, so the caller can re-post the
-// coordinator's options for fields created after the coordinator was configured.
 let mergeSubscriptionEvents = (
   ~subscriptionEventsRef: ref<array<string>>,
   ~fieldOptions: JSON.t,
@@ -215,6 +212,19 @@ let buildFieldMountConfig = (
   ->Dict.fromArray
 }
 
+// Shared failure summariser for merchant-facing confirm/tokenize calls:
+// reports the error code of an error-shaped result, or None on success.
+let errorCodeFailureSummary = (result: JSON.t): option<LoggerTypes.errorSummary> =>
+  result
+  ->getDictFromJson
+  ->getDictFromDict("error")
+  ->Dict.get("code")
+  ->Option.map(code => {
+    LoggerTypes.name: code->JSON.Decode.string->Option.getOr("RETURNED_ERROR_RESPONSE"),
+    message: None,
+    details: [],
+  })
+
 let savedCardNetwork = (savedCardDict: Dict.t<JSON.t>): string =>
   savedCardDict
   ->getDictFromDict("paymentMethodData")
@@ -249,6 +259,8 @@ let makeFieldElementAndHandle = (
   ~listenerName: string,
   ~eventHandlersRef: ref<Dict.t<JSON.t => unit>>,
   ~update: JSON.t => unit,
+  ~scope: SdkLogger.cardFormScope,
+  ~vaultProvider: string,
 ): Types.fieldHandle => {
   let element = LoaderPaymentElement.make(
     "paymentMethodsSDK",
@@ -266,39 +278,53 @@ let makeFieldElementAndHandle = (
   )
   let postToOwnIframe = fields =>
     iframeRef.contents->Window.iframePostMessage(fields->Dict.fromArray)
+  let fieldDetails = [
+    ("field", fieldName->JSON.Encode.string),
+    ("vault", vaultProvider->JSON.Encode.string),
+  ]
   {
     mount: selector => element.mount(selector),
-    unmount: () => element.unmount(),
+    unmount: () => {
+      element.unmount()
+      SdkLogger.logState(~event=CardFieldUnmounted({scope, field: fieldName}))
+    },
     destroy: () => {
       element.destroy()
       iframeRef := Nullable.null
       EventListenerManager.removeSmartEventListener("message", listenerName)
+      SdkLogger.logState(~event=CardFieldUnmounted({scope, field: fieldName}))
     },
     update: newOptions =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardField(Update),
-        ~details=[("field", fieldName->JSON.Encode.string)],
+        ~details=fieldDetails,
         ~call=() => update(newOptions),
       ),
     focus: () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardField(Focus),
-        ~details=[("field", fieldName->JSON.Encode.string)],
+        ~details=fieldDetails,
         ~call=() => postToOwnIframe([("doFocus", true->JSON.Encode.bool)]),
       ),
     blur: () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardField(Blur),
-        ~details=[("field", fieldName->JSON.Encode.string)],
+        ~details=fieldDetails,
         ~call=() => postToOwnIframe([("doBlur", true->JSON.Encode.bool)]),
       ),
     clear: () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardField(Clear),
-        ~details=[("field", fieldName->JSON.Encode.string)],
+        ~details=fieldDetails,
         ~call=() => postToOwnIframe([("doClearValues", true->JSON.Encode.bool)]),
       ),
-    on: (event, cb) => eventHandlersRef.contents->Dict.set(event, cb),
+    on: (event, cb) => {
+      eventHandlersRef.contents->Dict.set(event, cb)
+      HyperLoaderLogger.logMerchantCall(
+        ~event=HyperLoaderLogger.CardField(On),
+        ~details=[("event", event->JSON.Encode.string)]->Array.concat(fieldDetails),
+      )
+    },
   }
 }
 

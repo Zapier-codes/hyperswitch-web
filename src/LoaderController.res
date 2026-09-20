@@ -1,6 +1,6 @@
 open Utils
 @react.component
-let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) => {
+let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
   open JotaiAtoms
   open JotaiAtomsV2
 
@@ -343,7 +343,7 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
         }
 
         if dict->getDictIsSome("paymentElementCreate") {
-          // Set iframeId for ALL elements including individual card elements (cardNumber, cardExpiry, cardCvc)
+
           if dict->getDictIsSome("iframeId") {
             setKeys(prev => {
               ...prev,
@@ -472,7 +472,7 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
         } else if dict->getDictIsSome("paymentElementsUpdate") {
           updateOptions(dict)
         } else if dict->getDictIsSome("ElementsUpdate") {
-          SdkLogger.logLifecycle(~event=ElementOptionsUpdated)
+          SdkLogger.logState(~event=ElementOptionsChanged)
           let optionsDict = dict->getDictFromObj("options")
           setPaymentOptionsJson(prev => {
             let updatedPaymentOptions = prev->getDictFromJson->Dict.copy
@@ -544,9 +544,6 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
           setIsTestMode(_ => isTestMode)
         }
 
-        // Saved-card (return user) CVC iframe is mounted by ParentCardComponent
-        // with isSavedCardCvcFlow=true in its paymentElementCreate mount message;
-        // PaymentMethodsSDK reads this atom to render only the vault CVC field.
         if dict->Dict.get("isSavedCardCvcFlow")->Option.isSome {
           setIsSavedCardCvcFlow(_ => dict->Utils.getBool("isSavedCardCvcFlow", false))
           switch dict->getString("endpoint", "") {
@@ -618,13 +615,6 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
           }
         }
 
-        // Single clientList message carries both the merchant's enabled
-        // payment methods (payment_methods_enabled) and the customer's
-        // saved payment methods (customer_payment_methods). When the
-        // merchant disables saved payment methods, customer_payment_methods
-        // is already stripped to an empty array at the source
-        // (forwardPaymentMethodsToIframe), so this handler doesn't need its
-        // own send-side gate — it just decodes whatever arrived.
         if dict->getDictIsSome("clientList") {
           let clientListJson = dict->getJsonObjectFromDict("clientList")
           let listDict = clientListJson->getDictFromJson
@@ -680,11 +670,6 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
             customerPaymentMethods,
           })
 
-          // Payment-methods-list and customer-payment-methods data both
-          // arrive together in a single clientList response, so this is
-          // evaluated once using the freshly-computed customerPaymentMethods
-          // above. Logging it once per data source (as when they arrived as
-          // two independent postMessages) would double-log this event.
           if !optionsPayment.displaySavedPaymentMethods {
             evalMethodsList()
           } else {
@@ -759,7 +744,8 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError, ~initTimestamp) =>
         }
       } catch {
       | exn => {
-          SdkLogger.logDegraded(~surface=ParentWindowMessage, ~exn)
+
+          SdkLogger.logCrash(~origin=ParentWindowMessage, ~exn)
           setIntegrateErrorError(_ => true)
         }
       }

@@ -72,6 +72,8 @@ let useClickToPay = (
                 ->Array.length
               ClickToPayLogger.logLifecycle(
                 ~event=CardsListed({
+                  provider: VisaUctp,
+                  actionCode: SUCCESS->getStrFromActionCode,
                   visa: brandCount("visa"),
                   mastercard: brandCount("mastercard"),
                 }),
@@ -110,15 +112,14 @@ let useClickToPay = (
             | Some(reason) =>
               switch reason {
               | "VALIDATION_DATA_INVALID" =>
-                ClickToPayLogger.logLifecycle(~event=OtpRejected, ~provider=VisaUctp)
+                ClickToPayLogger.logLifecycle(~event=OtpRejected({provider: VisaUctp}))
                 setClickToPayConfig(prev => {
                   ...prev,
                   otpError: "VALIDATION_DATA_INVALID",
                 })
               | "OTP_SEND_FAILED" =>
                 ClickToPayLogger.logLifecycle(
-                  ~event=CardsUnavailable({code: reason}),
-                  ~provider=VisaUctp,
+                  ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
                 )
                 setClickToPayConfig(prev => {
                   ...prev,
@@ -127,8 +128,7 @@ let useClickToPay = (
 
               | "ACCT_INACCESSIBLE" =>
                 ClickToPayLogger.logLifecycle(
-                  ~event=CardsUnavailable({code: reason}),
-                  ~provider=VisaUctp,
+                  ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
                 )
                 setClickToPayConfig(prev => {
                   ...prev,
@@ -140,8 +140,7 @@ let useClickToPay = (
                   otpError: "NONE",
                 })
                 ClickToPayLogger.logLifecycle(
-                  ~event=CardsUnavailable({code: reason}),
-                  ~provider=VisaUctp,
+                  ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
                 )
               }
             | None => setVisaComponentState(NONE)
@@ -151,8 +150,7 @@ let useClickToPay = (
         } else {
           setVisaComponentState(NONE)
           ClickToPayLogger.logLifecycle(
-            ~event=CardsUnavailable({code: "INITIAL_CALL_FAILED"}),
-            ~provider=VisaUctp,
+            ~event=CardsUnavailable({provider: VisaUctp, code: "INITIAL_CALL_FAILED"}),
           )
         }
       }
@@ -168,7 +166,11 @@ let useClickToPay = (
           let initConfig = getVisaInitConfig(token, clientSecret)
 
           setVisaComponentState(CARDS_LOADING)
-          let _ = await vsdk.initialize(initConfig)
+          let _ = await ClickToPayLogger.observeFunction(
+            ~event=Initialize({provider: VisaUctp}),
+            ~call=() => vsdk.initialize(initConfig),
+          )
+          ClickToPayLogger.logLifecycle(~event=ProviderReady({provider: VisaUctp}))
           let _ = await getVisaCards(~identityValue=email, ~otp="", ~identityType=EMAIL_ADDRESS)
         }
       | None => ()
@@ -177,7 +179,7 @@ let useClickToPay = (
     | err =>
       setClickToPayNotReady()
       closeComponentIfSavedMethodsAreEmpty()
-      ClickToPayLogger.logLifecycle(~event=ProviderUnavailable, ~provider=VisaUctp, ~exn=err)
+      ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaUctp}), ~exn=err)
     }
   }
 
@@ -223,7 +225,7 @@ let useClickToPay = (
         ClickToPayHelpers.loadVisaScript(
           clickToPayToken,
           () => visaScriptOnLoadCallback(ctpToken),
-          () => setClickToPayNotReady(),
+          setClickToPayNotReady,
         )
 
       | None => setClickToPayNotReady()

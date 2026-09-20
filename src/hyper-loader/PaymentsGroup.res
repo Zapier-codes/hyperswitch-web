@@ -422,6 +422,8 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
           savedCardTokenRef := savedCardToken
         }
       },
+      ~scope=PaymentForm,
+      ~vaultProvider="none",
     )
 
     attachFieldListener()
@@ -496,7 +498,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
   )
 
   let create = (fieldType: string, options: JSON.t): fieldHandle =>
-    HyperLoaderLogger.logMerchantCall(
+    HyperLoaderLogger.observeMerchantCall(
       ~event=HyperLoaderLogger.CardForm(Create),
       ~details=[("field", fieldType->JSON.Encode.string)],
       ~call=() =>
@@ -548,7 +550,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
         "[PaymentsGroup] update() refused: `clientSecret` and `confirmParams` are immutable after mount. " ++ "Create a new group (or remount the fields) to switch intents.",
       )
     } else {
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardForm(Update),
         ~details=[("field_count", fieldsRef.contents->Dict.valuesToArray->Array.length->JSON.Encode.int)],
         ~call=() =>
@@ -568,6 +570,10 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
 
   let on = (event: string, cb: JSON.t => unit): unit => {
     eventCallbacksRef.contents->Dict.set(event, cb)
+    HyperLoaderLogger.logMerchantCall(
+      ~event=HyperLoaderLogger.CardForm(On),
+      ~details=[("event", event->JSON.Encode.string)],
+    )
   }
 
   let dispatchConfirm = (~flow: string, ~paymentToken: option<string>): promise<JSON.t> =>
@@ -598,23 +604,11 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
       )
     })
 
-  // Only the outcome and its error code are logged — never the card values or the payment token.
-  let confirmFailureSummary = (result: JSON.t): option<LoggerTypes.errorSummary> =>
-    result
-    ->getDictFromJson
-    ->getDictFromDict("error")
-    ->Dict.get("code")
-    ->Option.map(code => {
-      LoggerTypes.name: code->JSON.Decode.string->Option.getOr("RETURNED_ERROR_RESPONSE"),
-      message: None,
-      details: [],
-    })
-
   let confirmPayment = (): promise<JSON.t> =>
     HyperLoaderLogger.observeMerchantCall(
       ~event=HyperLoaderLogger.CardForm(ConfirmPayment),
       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
-      ~failureOf=confirmFailureSummary,
+      ~failureOf=errorCodeFailureSummary,
       ~call=() =>
         if confirmingRef.contents {
           Promise.resolve(
@@ -653,7 +647,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
     )
 
   let deinit = (): unit =>
-    HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.CardForm(Deinit), ~call=() => {
+    HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.CardForm(Deinit), ~call=() => {
       SdkLogger.logState(~event=CardFormUnmounted({scope: PaymentForm}))
       fieldsRef.contents
       ->Dict.valuesToArray

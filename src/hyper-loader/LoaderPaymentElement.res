@@ -6,7 +6,6 @@ open Identity
 @val @scope(("navigator", "clipboard"))
 external writeText: string => promise<'a> = "writeText"
 
-let onCompleteDoThisUsed = ref(false)
 let isPaymentButtonHandlerProvided = ref(false)
 
 let currentOneClickHandler = ref((None: option<unit => Promise.t<unit>>))
@@ -47,15 +46,9 @@ let walletOneClickEventHandler = (event: Types.event) => {
 }
 
 let ensureWalletOneClickListener = () => {
-  addSmartEventListener(
-    "message",
-    event => walletOneClickEventHandler(event),
-    "walletOneClickHandler",
-  )
+  addSmartEventListener("message", walletOneClickEventHandler, "walletOneClickHandler")
 }
 
-// ─── Shared iframe HTML builder ────────────────────────────────────────────────
-// Produces the raw <iframe> HTML fragment used by the `mount` function.
 let buildIframeHtmlString = (~iframeId: string, ~iframeSrc: string, ~additionalStyle: string) =>
   `<iframe
    id="${iframeId}"
@@ -67,18 +60,9 @@ let buildIframeHtmlString = (~iframeId: string, ~iframeSrc: string, ~additionalS
    style="border: 0px; ${additionalStyle} outline: none;"
    width="100%"
 ></iframe>`
-// Multi-instance support: rendezvous queues that pair handler-only instances
-// (C, created at React render time, calls on()) with mounting instances
-// (O, created in useEffect, calls mount()).
-//
-// React.StrictMode renders components twice and runs effects twice (cleanup +
-// re-run), so we CANNOT register at make() time (duplicates accumulate).
-// Instead we register lazily: mount() queues the selector, on() claims it.
-// Whichever arrives first enqueues; the second dequeues and completes the pair.
 
-// Selectors from mount() calls waiting for a matching on() call.
 let pendingMountSelectorsByType: Dict.t<array<string>> = Dict.make()
-// Refs from on() calls waiting for a matching mount() selector.
+
 let pendingOnRefsByType: Dict.t<array<ref<string>>> = Dict.make()
 
 let make = (
@@ -109,7 +93,7 @@ let make = (
     }
     let mountId = ref("")
     let localSelectorRef = ref("")
-    // Unique per-instance ID to scope event listener names and prevent collisions.
+
     let elementInstanceId = generateRandomString(8)
 
     let setPaymentIframeRef = ref => {
@@ -138,10 +122,7 @@ let make = (
     }
 
     let registerEventHandler = (eventType, eventHandler) => {
-      // Multi-instance: if this C instance has no selector yet, try to claim
-      // a pending mount selector.  If none is available, register self in the
-      // pendingOnRefs queue so the next mount() can adopt us.
-      // Guard on "" prevents re-registration on StrictMode effect re-runs.
+
       if componentType->Utils.canHaveMultipleInstances && localSelectorRef.contents === "" {
         let mounts = pendingMountSelectorsByType->Dict.get(componentType)->Option.getOr([])
         if mounts->Array.length > 0 {
@@ -150,10 +131,9 @@ let make = (
           pendingMountSelectorsByType->Dict.set(componentType, remaining)
           localSelectorRef := selector
         } else {
-          // No mount yet — register ref for adoption when mount() comes.
+
           let refs = pendingOnRefsByType->Dict.get(componentType)->Option.getOr([])
 
-          // Avoid duplicate registration (e.g. on() called twice on same instance).
           if !(refs->Array.some(r => r === localSelectorRef)) {
             refs->Array.push(localSelectorRef)->ignore
             pendingOnRefsByType->Dict.set(componentType, refs)
@@ -161,7 +141,7 @@ let make = (
         }
       }
       let matchesInstance = (ev: Types.event) => {
-        // Multi-instance: match by elementType + iframeId so events route to the correct instance.
+
         if componentType->Utils.canHaveMultipleInstances {
           ev.data.elementType === componentType && ev.data.iframeId === localSelectorRef.contents
         } else {
@@ -169,7 +149,6 @@ let make = (
         }
       }
 
-      // Subscription event helper: checks eventName in payload, then applies matchesInstance.
       let addSubscriptionEventListener = (subscriptionEventName, activity) => {
         addSmartEventListener(
           "message",
@@ -276,10 +255,9 @@ let make = (
       HyperLoaderLogger.logMerchantCall(
         ~event=HyperLoaderLogger.PaymentElement(Collapse),
         ~details=[("component_type", componentType->JSON.Encode.string)],
-        ~call=() => (),
       )
     let blur = () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.PaymentElement(Blur),
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~call=() =>
@@ -290,7 +268,7 @@ let make = (
       )
 
     let focus = () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.PaymentElement(Focus),
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~call=() =>
@@ -301,7 +279,7 @@ let make = (
       )
 
     let clear = () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.PaymentElement(Clear),
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~call=() =>
@@ -311,29 +289,32 @@ let make = (
           }),
       )
 
-    let unmount = () => {
-      let id = mountId.contents
+    let clearMountedContainer = () =>
+      switch Window.querySelector(mountId.contents)->Nullable.toOption {
+      | Some(elem) => elem->Window.innerHTML("")
+      | None => ()
+      }
 
-      let oElement = Window.querySelector(id)
-      HyperLoaderLogger.logMerchantCall(
+    let containerPresentDetail = () => [
+      (
+        "container_present",
+        (Window.querySelector(mountId.contents)->Nullable.toOption->Option.isSome)->JSON.Encode.bool,
+      ),
+    ]
+
+    let unmount = () =>
+      HyperLoaderLogger.observeMerchantCall(
         ~event=surface(Unmount),
-        ~details=surfaceDetails->Array.concat([
-          ("container_present", (oElement->Nullable.toOption->Option.isSome)->JSON.Encode.bool),
-        ]),
-        ~call=() =>
-          switch oElement->Nullable.toOption {
-          | Some(elem) => elem->Window.innerHTML("")
-          | None => ()
-          },
+        ~details=surfaceDetails->Array.concat(containerPresentDetail()),
+        ~call=clearMountedContainer,
       )
-    }
 
     let destroy = () =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=surface(Destroy),
-        ~details=surfaceDetails,
+        ~details=surfaceDetails->Array.concat(containerPresentDetail()),
         ~call=() => {
-          unmount()
+          clearMountedContainer()
           mountId := ""
         },
       )
@@ -369,7 +350,7 @@ let make = (
     }
 
     let update = newOptions =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.PaymentElement(Update),
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~call=() => updateElementOptions(newOptions),
@@ -381,19 +362,17 @@ let make = (
       let localSelectorString = localSelectorArr->Array.get(1)->Option.getOr("someString")
       localSelectorRef := localSelectorString
 
-      // Multi-instance rendezvous: pair this mount with a waiting on() ref, or
-      // enqueue the selector so a future on() call can claim it.
       if componentType->Utils.canHaveMultipleInstances {
         let refs = pendingOnRefsByType->Dict.get(componentType)->Option.getOr([])
         let emptyIdx = refs->Array.findIndex(r => r.contents === "")
         if emptyIdx >= 0 {
-          // A C instance is already waiting — hand it the selector.
+
           let siblingRef = refs->Array.getUnsafe(emptyIdx)
           siblingRef := localSelectorString
           let remaining = refs->Array.filterWithIndex((_, i) => i !== emptyIdx)
           pendingOnRefsByType->Dict.set(componentType, remaining)
         } else {
-          // No C instance waiting yet — enqueue for a future on() call.
+
           let mounts = pendingMountSelectorsByType->Dict.get(componentType)->Option.getOr([])
           mounts->Array.push(localSelectorString)->ignore
           pendingMountSelectorsByType->Dict.set(componentType, mounts)
@@ -563,7 +542,7 @@ let make = (
           )
         }
       }
-      // Multi-instance elements need unique listener names per instance.
+
       let eventListenerActivityName = if componentType->Utils.canHaveMultipleInstances {
         `onMount-${componentType}-${localSelectorString}`
       } else {
@@ -625,13 +604,19 @@ let make = (
     }
 
     let mount = selector =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=surface(Mount),
         ~details=surfaceDetails,
         ~call=() => mountElement(selector),
       )
 
-    let on = (eventType, callback) => registerEventHandler(eventType, callback)
+    let on = (eventType, callback) => {
+      HyperLoaderLogger.logMerchantCall(
+        ~event=surface(On),
+        ~details=surfaceDetails->Array.concat([("event", eventType->JSON.Encode.string)]),
+      )
+      registerEventHandler(eventType, callback)
+    }
 
     {
       on,
@@ -649,8 +634,9 @@ let make = (
   } catch {
   | e => {
       Sentry.captureException(e)
-      SdkLogger.logDegraded(
-        ~surface=ElementConstructor,
+
+      SdkLogger.logCrash(
+        ~origin=ElementConstructor,
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~exn=e,
       )

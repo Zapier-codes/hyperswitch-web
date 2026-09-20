@@ -4,7 +4,7 @@ type vgsCollectGlobal = {create: (string, string, JSON.t => unit) => JSON.t}
 @val @scope("window") external vgsCollect: Nullable.t<vgsCollectGlobal> = "VGSCollect"
 
 @send external formField: (JSON.t, string, JSON.t) => JSON.t = "field"
-// `submit` is deliberately not bound here — `VGSTypes.returnValue` already describes it.
+
 @send external fieldOn: (JSON.t, string, JSON.t => unit) => unit = "on"
 @send external fieldUpdate: (JSON.t, JSON.t) => unit = "update"
 @send external fieldDelete: JSON.t => unit = "delete"
@@ -13,13 +13,8 @@ type vgsCollectGlobal = {create: (string, string, JSON.t => unit) => JSON.t}
 @get external fieldDeleteHandler: JSON.t => Nullable.t<unit => unit> = "delete"
 @get external fieldClearHandler: JSON.t => Nullable.t<unit => unit> = "clear"
 
-// `JSON.stringify` really returns `undefined` for `undefined`, functions and symbols.
 @val @scope("JSON") external stringifyNullable: JSON.t => Nullable.t<string> = "stringify"
 
-type eventListenerOptions = {once: bool}
-@send
-external addElementEventListener: (Dom.element, string, 'ev => unit, eventListenerOptions) => unit =
-  "addEventListener"
 @send
 external elementQuerySelector: (Dom.element, string) => Nullable.t<Dom.element> = "querySelector"
 @send external setStyleProperty: (Window.style, string, string) => unit = "setProperty"
@@ -190,9 +185,18 @@ let isVGSProvider = (vaultCredentials: JSON.t): bool => {
   }
 }
 
+let vgsScriptSelector = `script[src="${VGSConstants.vgsScriptURL}"]`
+
+let scriptElementStillPresent = (): bool =>
+  Window.querySelector(vgsScriptSelector)->Nullable.toOption->Option.isSome
+
 let inFlightScriptPromise: ref<option<Promise.t<unit>>> = ref(None)
 
-let loadVGSScript = (): Promise.t<unit> =>
+let loadVGSScript = (): Promise.t<unit> => {
+  switch (inFlightScriptPromise.contents, scriptElementStillPresent()) {
+  | (Some(_), false) => inFlightScriptPromise := None
+  | _ => ()
+  }
   switch inFlightScriptPromise.contents {
   | Some(scriptLoadPromise) => scriptLoadPromise
   | None => {
@@ -216,6 +220,7 @@ let loadVGSScript = (): Promise.t<unit> =>
       scriptLoadPromise
     }
   }
+}
 
 let computeVGSBaseOptions = (~fieldType: string, ~options: JSON.t): JSON.t => {
   let optionsDict = options->getDictFromJson
@@ -248,13 +253,10 @@ let merchantOverridableStringKeys = [
 ]
 let merchantOverridableBoolKeys = ["showCardIcon", "disabled", "readOnly", "hideValue"]
 
-// `computeVGSBaseOptions` hands back shared module constants, so copy before writing.
 let applyMerchantOptionOverrides = (~basis: JSON.t, ~options: JSON.t): JSON.t => {
   let basisDict = basis->getDictFromJson->Dict.copy
   let optionsDict = options->getDictFromJson
   merchantOverridableStringKeys->Array.forEach(key => {
-    // `placeholder: ""` is a request for no placeholder, so it applies; an empty
-    // colour or label is not, so those keep the non-empty guard.
     let supplied =
       key === "placeholder"
         ? optionsDict->getOptionString(key)
@@ -427,9 +429,6 @@ let make = (
     | None => ()
     }
 
-  // CommonCardProps.changeCardNumber clears expiry and CVC in place when the number is wiped;
-  // VGS hosts each field itself, so the broker relays it off the form state channel. The brand
-  // stands in for that code's prevCardBrandRef guard.
   let clearDependentFieldsOnEmptiedCardNumber = (): unit =>
     fieldsRef.contents
     ->Dict.valuesToArray
@@ -462,19 +461,35 @@ let make = (
         let createFormPromise =
           loadVGSScript()
           ->Promise.then(_ => {
-            // VGS's 3rd `create` arg is the form-level state channel, not an error channel.
             let onFormStateChange: JSON.t => unit = state => {
               formStateRef := state->getDictFromJson
               publishFieldStates()
               clearDependentFieldsOnEmptiedCardNumber()
             }
+            let startedAt = Date.now()
+            let recordFormCreate = (~outcome, ~startedAt=?, ~exn=?) =>
+              SdkLogger.logFunction(
+                ~event=VaultFormCreate,
+                ~outcome,
+                ~startedAt?,
+                ~exn?,
+                ~paymentMethod=Card(Unspecified),
+              )
+            recordFormCreate(~outcome=Started)
             let form: JSON.t = switch vgsCollect->Nullable.toOption {
-            | Some(collect) => collect.create(vaultId, environment, onFormStateChange)
+            | Some(collect) =>
+              try collect.create(vaultId, environment, onFormStateChange) catch {
+              | err => {
+                  recordFormCreate(~outcome=Failed, ~startedAt, ~exn=err->Identity.anyTypeToJson)
+                  Error.raise(Error.make("VGSCollect create failed"))
+                }
+              }
             | None =>
+              recordFormCreate(~outcome=Failed, ~startedAt)
               Error.raise(Error.make("VGSCollect script failed to register window.VGSCollect"))
             }
             formRef := Some(form)
-            SdkLogger.logLifecycle(~event=VaultFormCreated, ~paymentMethod=Card(Unspecified))
+            recordFormCreate(~outcome=Done, ~startedAt)
             Promise.resolve(form)
           })
           ->Promise.catch(err => {
@@ -534,14 +549,42 @@ let make = (
       } else {
         Promise.make((resolve, _reject) => {
           let vgsForm = form->VGSTypes.formFromJson
-          let settleWithFailure = (message: string) =>
+
+          let startedAt = Date.now()
+          let settled = ref(false)
+
+          let event = SdkLogger.VaultTokenization({scope: FullCard})
+          let record = (~outcome, ~details=[], ~exn=?) =>
+            if !settled.contents {
+              settled := true
+              SdkLogger.logApi(
+                ~event,
+                ~outcome,
+                ~details=[("vault", "vgs"->JSON.Encode.string)]->Array.concat(details),
+                ~startedAt,
+                ~exn?,
+                ~paymentMethod=Card(Unspecified),
+              )
+            }
+
+          SdkLogger.logApi(
+            ~event,
+            ~outcome=Started,
+            ~details=[("vault", "vgs"->JSON.Encode.string)],
+            ~paymentMethod=Card(Unspecified),
+          )
+
+          let settleWithFailure = (message: string) => {
+            record(~outcome=Failed, ~exn=message->JSON.Encode.string)
             resolve(
               makeErrorEnvelope(~code="tokenization_failed", ~message, ~errorType="api_error"),
             )
-          // VGS routes a transport failure through this SUCCESS callback as (status=null, data="Network Error").
+          }
+
           let onSuccess: (JSON.t, JSON.t) => unit = (status, data) => {
             switch (status->httpStatusCode, data->JSON.Decode.object) {
             | (Some(code), Some(vaultResponse)) if code >= 200. && code < 300. =>
+              record(~outcome=Done, ~details=[("status_code", code->Float.toInt->JSON.Encode.int)])
               let resultDict = Dict.make()
               resultDict->Dict.set("status", "success"->JSON.Encode.string)
               resultDict->Dict.set("vaultResponse", vaultResponse->JSON.Encode.object)
@@ -552,7 +595,7 @@ let make = (
               )
             }
           }
-          // VGS calls the submit error callback with ONE argument: the per-field error map.
+
           let onError: JSON.t => unit = errors => {
             let stringified = try errors->stringifyNullable->Nullable.toOption catch {
             | _ => None
@@ -568,7 +611,7 @@ let make = (
           try {
             let submitReturn =
               vgsForm->VGSTypes.submitReturningValue("/post", emptyPayload, onSuccess, onError)
-            // VGS *rejects* this when the fields aren't loaded yet; unadopted, this promise never settles.
+
             Promise.resolve(submitReturn)
             ->Promise.catch(exn => {
               settleWithFailure(`VGS submit rejected: ${exn->exceptionMessage}`)
@@ -620,8 +663,6 @@ let make = (
           inputFieldHeight
         }
 
-        // VGS renders the input inside its own iframe, so sizing the container alone leaves a
-        // short input in a tall box. Fill it unless the field or the merchant set a height.
         let computedOptions = {
           let optionsDict = computedOptions->getDictFromJson->Dict.copy
           let css = optionsDict->getDictFromDict("css")->Dict.copy

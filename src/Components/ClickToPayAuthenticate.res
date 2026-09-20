@@ -90,7 +90,10 @@ let make = (
                       resolve()
                     | Error(err) => {
                         let errException = err->formatException
-                        ClickToPayLogger.logLifecycle(~event=ProviderUnavailable, ~exn=err)
+                        ClickToPayLogger.logLifecycle(
+                          ~event=ProviderUnavailable({provider: MastercardUctp}),
+                          ~exn=err,
+                        )
                         let exceptionMessage =
                           errException
                           ->getDictFromJson
@@ -176,7 +179,7 @@ let make = (
         let selectionDetails = [
           ("card_brand", obj.paymentCardDescriptor->JSON.Encode.string),
           ("card_index", i->JSON.Encode.int),
-          ("source", "click_to_pay"->JSON.Encode.string),
+          ("list_source", "click_to_pay"->JSON.Encode.string),
         ]
         <SavedCardItem
           key={"ctp_" ++ i->Int.toString}

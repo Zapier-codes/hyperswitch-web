@@ -25,6 +25,7 @@ type category =
 type outcome =
   | Started
   | Done
+  | Returned
   | Reused
   | Failed
   | TimedOut
@@ -48,6 +49,12 @@ type operationSpec = {
 
 let makeOperation = (action, subject) => {action, subject}
 
+let toEventSpec = (spec: operationSpec, ~outcome: option<outcome>=?): eventSpec => {
+  action: Some(spec.action),
+  subject: spec.subject,
+  outcome,
+}
+
 type failureClass =
   | Rejected
   | Threw
@@ -68,6 +75,7 @@ type timeout = {durationMs: float, timeoutMs: int}
 type operationOutcome =
   | OpStarted
   | OpDone(timing)
+  | OpReturned(timing)
   | OpReused(timing)
   | OpFailed(failure)
   | OpTimedOut(timeout)
@@ -76,6 +84,7 @@ let outcomeOf = operationOutcome =>
   switch operationOutcome {
   | OpStarted => Started
   | OpDone(_) => Done
+  | OpReturned(_) => Returned
   | OpReused(_) => Reused
   | OpFailed(_) => Failed
   | OpTimedOut(_) => TimedOut
@@ -84,7 +93,7 @@ let outcomeOf = operationOutcome =>
 let durationOf = operationOutcome =>
   switch operationOutcome {
   | OpStarted => None
-  | OpDone({durationMs}) | OpReused({durationMs}) => Some(durationMs)
+  | OpDone({durationMs}) | OpReturned({durationMs}) | OpReused({durationMs}) => Some(durationMs)
   | OpFailed({durationMs}) => Some(durationMs)
   | OpTimedOut({durationMs}) => Some(durationMs)
   }
@@ -94,7 +103,7 @@ type operationSeverity = {success: severity, failure: severity}
 let operationSeverityOf = ({success, failure}, ~outcome: operationOutcome) =>
   switch outcome {
   | OpStarted | OpReused(_) => Debug
-  | OpDone(_) => success
+  | OpDone(_) | OpReturned(_) => success
   | OpFailed(_) | OpTimedOut(_) => failure
   }
 
@@ -124,6 +133,7 @@ let outcomeName = outcome =>
   switch outcome {
   | Started => "init"
   | Done => "done"
+  | Returned => "returned"
   | Reused => "reused"
   | Failed => "failed"
   | TimedOut => "timed_out"

@@ -30,11 +30,14 @@ type method =
   | InitAuthenticationSession
   | PaymentMethodsManagementElements
   | GetCustomerSavedPaymentMethods
+  | GetCustomerDefaultSavedPaymentMethodData
+  | GetCustomerLastUsedPaymentMethodData
   | UpdateIntent
   | InitiateUpdateIntent
   | CompleteUpdateIntent
   | FetchUpdates
   | OnSdkHandleClick
+  | On
   | Tokenize
   | ConfirmTokenization
 
@@ -72,6 +75,7 @@ type merchantProp =
 type merchantPropEvent =
   | HyperProp(merchantProp)
   | ElementsProp(merchantProp)
+  | PaymentElementProp(merchantProp)
 
 type merchantIssue =
   | InvalidPublishableKey
@@ -85,9 +89,8 @@ type merchantIssue =
   | ValueOutOfRange
   | ConnectorMisconfigured
   | UnsupportedOptionValue
+  | UnknownOptionKey
   | DeprecatedMethod
-
-let namespace = event => event->LoggerUtils.variantName
 
 let methodOf = event =>
   switch event {
@@ -101,7 +104,10 @@ let methodOf = event =>
   }
 
 let merchantCallSpec = event =>
-  makeOperation(call, `${event->namespace}_${event->methodOf->LoggerUtils.variantName}`)
+  makeOperation(
+    call,
+    `${event->LoggerUtils.variantName}_${event->methodOf->LoggerUtils.variantName}`,
+  )
 
 let merchantCallSeverity = event =>
   switch event->methodOf {
@@ -111,41 +117,33 @@ let merchantCallSeverity = event =>
   | ConfirmWithCustomerDefaultPaymentMethod
   | ConfirmWithLastUsedPaymentMethod
   | PaymentRequest
-  | Tokenize => {success: Info, failure: Error}
+  | Tokenize
+  | ConfirmTokenization => {success: Info, failure: Error}
   | _ => {success: Debug, failure: Error}
   }
 
 let merchantPropSpec = event => {
-  let merchantProp = switch event {
-  | HyperProp(merchantProp) | ElementsProp(merchantProp) => merchantProp
+  let (surface, merchantProp) = switch event {
+  | HyperProp(merchantProp) => ("hyper", merchantProp)
+  | ElementsProp(merchantProp) => ("elements", merchantProp)
+  | PaymentElementProp(merchantProp) => ("payment_element", merchantProp)
   }
-  {action: Some("prop"), subject: merchantProp->LoggerUtils.variantName, outcome: None}
+  {
+    action: Some("prop"),
+    subject: `${surface}_${merchantProp->LoggerUtils.variantName}`,
+    outcome: None,
+  }
 }
-
-let merchantPropDetails = event => [
-  (
-    "surface",
-    switch event {
-    | HyperProp(_) => "hyper"
-    | ElementsProp(_) => "elements"
-    }->JSON.Encode.string,
-  ),
-]
 
 let merchantPropSeverity = Debug
-
-let merchantIssueSpec = issue => {
-  action: None,
-  subject: issue->LoggerUtils.variantName,
-  outcome: Some(Failed),
-}
 
 let merchantIssueSeverity = issue =>
   switch issue {
   | InvalidPublishableKey
   | InsecureProtocol
   | MissingParameter
-  | MalformedValue => Error
+  | MalformedValue =>
+    Error
   | ImmutableAfterMount
   | ExpectedBoolean
   | ExpectedString
@@ -153,7 +151,9 @@ let merchantIssueSeverity = issue =>
   | ValueOutOfRange
   | ConnectorMisconfigured
   | UnsupportedOptionValue
-  | DeprecatedMethod => Warning
+  | UnknownOptionKey
+  | DeprecatedMethod =>
+    Warning
   }
 
 let observeMerchantCall = (
@@ -168,6 +168,7 @@ let observeMerchantCall = (
     ~category=Merchant,
     ~spec=event->merchantCallSpec,
     ~severity=event->merchantCallSeverity,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
     ~failureOf,
@@ -175,36 +176,31 @@ let observeMerchantCall = (
     ~call,
   )
 
-let logMerchantCall = (~event: merchantCallEvent, ~details=[], ~call) =>
-  LoggerRuntime.observeSync(
+let logMerchantCall = (~event: merchantCallEvent, ~details=[]) =>
+  LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=event->merchantCallSpec,
-    ~severity=event->merchantCallSeverity,
-    ~details,
-    ~call,
-  )
-
-let recordMerchantCall = (~event: merchantCallEvent, ~details=[]) =>
-  LoggerRuntime.record(
-    ~category=Merchant,
-    ~spec=event->merchantCallSpec,
+    ~spec=event->merchantCallSpec->toEventSpec,
     ~severity=(event->merchantCallSeverity).success,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
   )
 
-let logMerchantProps = (~event: merchantPropEvent, ~details=[]) =>
+let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~paymentMethod=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
     ~spec=event->merchantPropSpec,
     ~severity=merchantPropSeverity,
-    ~details=event->merchantPropDetails->Array.concat(details),
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
+    ~paymentMethod?,
   )
 
 let logMerchantIssue = (~issue: merchantIssue, ~details=[]) =>
   LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=issue->merchantIssueSpec,
+    ~spec=issue->LoggerUtils.deriveFailure,
     ~severity=issue->merchantIssueSeverity,
+    ~data=issue->LoggerUtils.eventDetails,
     ~details,
   )
 

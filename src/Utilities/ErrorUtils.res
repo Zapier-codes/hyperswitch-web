@@ -73,11 +73,24 @@ let unknownKeysWarning = (validKeysArr, dict: Dict.t<JSON.t>, dictType: string) 
   ->Array.forEach(((key, _)) =>
     validKeysArr->Array.includes(key)
       ? ()
-      : Console.warn(`Unknown Key: '${key}' key in ${dictType}`)
+      : {
+          HyperLoaderLogger.logMerchantIssue(
+            ~issue=UnknownOptionKey,
+            ~details=[("key", key->JSON.Encode.string), ("option", dictType->JSON.Encode.string)],
+          )
+          Console.warn(`Unknown Key: '${key}' key in ${dictType}`)
+        }
   )
 
 let unknownPropValueWarning = (inValidValue, validValueArr, dictType) => {
   let expectedValues = validValueArr->Array.map(item => `'${item}'`)->Array.join(", ")
+  HyperLoaderLogger.logMerchantIssue(
+    ~issue=UnsupportedOptionValue,
+    ~details=[
+      ("value", inValidValue->JSON.Encode.string),
+      ("option", dictType->JSON.Encode.string),
+    ],
+  )
   Console.warn(`Unknown Value: '${inValidValue}' value in ${dictType}, Expected ${expectedValues}`)
 }
 

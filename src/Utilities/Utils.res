@@ -836,7 +836,7 @@ let validateRountingNumber = str => {
   }
 }
 
-let handlePostMessageEvents = (~iframeId, ~complete, ~empty, ~paymentType) => {
+let handlePostMessageEvents = (~complete, ~empty, ~paymentType) => {
   messageParentWindow([
     ("elementType", "payment"->JSON.Encode.string),
     ("complete", complete->JSON.Encode.bool),

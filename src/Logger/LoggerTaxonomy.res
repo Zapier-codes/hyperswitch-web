@@ -4,6 +4,12 @@ type cardType =
   | Dynamic(string)
   | Unspecified
 
+type clickToPayProvider =
+  | VisaUctp
+  | VisaDirect
+  | MastercardUctp
+  | MastercardDirect
+
 type walletType =
   | GooglePay
   | ApplePay
@@ -135,35 +141,55 @@ let fromBackendValue = value =>
   | other => Some(Dynamic(other))
   }
 
+let cardSubtype = value =>
+  switch value {
+  | "credit" => Credit
+  | "debit" => Debit
+  | other => Dynamic(other)
+  }
+
+let walletSubtype = value =>
+  switch value {
+  | "google_pay" => GooglePay
+  | "apple_pay" => ApplePay
+  | "samsung_pay" => SamsungPay
+  | "paypal" => Paypal
+  | "paypal_sdk" => PaypalSdk
+  | "paze" => Paze
+  | "venmo" => Venmo
+  | other => Dynamic(other)
+  }
+
+let payLaterSubtype = value =>
+  switch value {
+  | "klarna" => Klarna
+  | "affirm" => Affirm
+  | "afterpay_clearpay" => AfterpayClearpay
+  | "pay_bright" => PayBright
+  | "walley" => Walley
+  | "alma" => Alma
+  | "atome" => Atome
+  | other => Dynamic(other)
+  }
+
+let openBankingSubtype = value =>
+  switch value {
+  | "plaid" => Plaid
+  | other => Dynamic(other)
+  }
+
 let withType = (value, typeValue) =>
   switch (value, typeValue->String.toLowerCase->String.trim) {
   | (value, "") => value
-  | (Card(Unspecified), "credit") => Card(Credit)
-  | (Card(Unspecified), "debit") => Card(Debit)
-  | (Card(Unspecified), other) => Card(Dynamic(other))
-  | (Wallet(Unspecified), "google_pay") => Wallet(GooglePay)
-  | (Wallet(Unspecified), "apple_pay") => Wallet(ApplePay)
-  | (Wallet(Unspecified), "samsung_pay") => Wallet(SamsungPay)
-  | (Wallet(Unspecified), "paypal") => Wallet(Paypal)
-  | (Wallet(Unspecified), "paypal_sdk") => Wallet(PaypalSdk)
-  | (Wallet(Unspecified), "paze") => Wallet(Paze)
-  | (Wallet(Unspecified), "venmo") => Wallet(Venmo)
-  | (Wallet(Unspecified), other) => Wallet(Dynamic(other))
-  | (PayLater(Unspecified), "klarna") => PayLater(Klarna)
-  | (PayLater(Unspecified), "affirm") => PayLater(Affirm)
-  | (PayLater(Unspecified), "afterpay_clearpay") => PayLater(AfterpayClearpay)
-  | (PayLater(Unspecified), "pay_bright") => PayLater(PayBright)
-  | (PayLater(Unspecified), "walley") => PayLater(Walley)
-  | (PayLater(Unspecified), "alma") => PayLater(Alma)
-  | (PayLater(Unspecified), "atome") => PayLater(Atome)
-  | (PayLater(Unspecified), other) => PayLater(Dynamic(other))
-  | (OpenBanking(Unspecified), "plaid") => OpenBanking(Plaid)
-  | (OpenBanking(Unspecified), other) => OpenBanking(Dynamic(other))
-  | (BankRedirect(Unspecified), other) => BankRedirect(Dynamic(other))
-  | (BankDebit(Unspecified), other) => BankDebit(Dynamic(other))
-  | (BankTransfer(Unspecified), other) => BankTransfer(Dynamic(other))
-  | (CardRedirect(Unspecified), other) => CardRedirect(Dynamic(other))
-  | (MobilePayment(Unspecified), other) => MobilePayment(Dynamic(other))
+  | (Card(Unspecified), subtype) => Card(subtype->cardSubtype)
+  | (Wallet(Unspecified), subtype) => Wallet(subtype->walletSubtype)
+  | (PayLater(Unspecified), subtype) => PayLater(subtype->payLaterSubtype)
+  | (OpenBanking(Unspecified), subtype) => OpenBanking(subtype->openBankingSubtype)
+  | (BankRedirect(Unspecified), subtype) => BankRedirect(Dynamic(subtype))
+  | (BankDebit(Unspecified), subtype) => BankDebit(Dynamic(subtype))
+  | (BankTransfer(Unspecified), subtype) => BankTransfer(Dynamic(subtype))
+  | (CardRedirect(Unspecified), subtype) => CardRedirect(Dynamic(subtype))
+  | (MobilePayment(Unspecified), subtype) => MobilePayment(Dynamic(subtype))
   | (value, _) => value
   }
 

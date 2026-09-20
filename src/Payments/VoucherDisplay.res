@@ -5,7 +5,6 @@ let make = () => {
   let (returnUrl, setReturnUrl) = React.useState(_ => "")
   let (downloadUrl, setDownloadUrl) = React.useState(_ => "")
   let (reference, setReference) = React.useState(_ => "")
-  let (downloadCounter, setDownloadCounter) = React.useState(_ => 0)
   let (paymentMethod, setPaymentMethod) = React.useState(_ => "")
   let (paymentIntent, setPaymentIntent) = React.useState(_ => JSON.Encode.null)
   let (loader, setLoader) = React.useState(_ => true)
@@ -63,7 +62,6 @@ let make = () => {
               ref={linkRef->ReactDOM.Ref.domRef}
               onClick={_ => {
                 if !autoDownloading.current {
-                  setDownloadCounter(c => c + 1)
                   SdkLogger.logUser(
                     ~event=VoucherDownloadRequested,
                     ~paymentMethod=?paymentMethod->LoggerTaxonomy.fromBackendValue,

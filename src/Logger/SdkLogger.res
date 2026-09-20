@@ -1,18 +1,13 @@
 open LoggerTypes
 
 type walletStage =
-  | SdkLoaded
-  | InstanceCreated
-  | SessionStarted
   | ConfirmRequestReceived
-  | PaymentCompleted
   | OneClickDeclined
 
 type walletFlow =
   | Normal
   | Delayed
   | ThirdParty
-  | Connector
   | PaypalSdkTabs
 
 type walletFailure =
@@ -27,11 +22,9 @@ type walletFailure =
   | ListenerSetupFailed
   | MessageHandlingFailed
   | PaymentDataFailed
-  | PaymentSyncFailed
   | SdkMountFailed
 
 type vaultFailure =
-  | ScriptUnavailable
   | FieldBindingFailed
   | FieldMountFailed
   | FieldUpdateFailed
@@ -43,7 +36,7 @@ type threeDsMethodFailure =
   | FormSubmitFailed
   | IframeLoadFailed
 
-type threeDsPopupFailure = | MessageHandlingFailed
+type threeDsPopupFailure = MessageHandlingFailed
 
 type ddcFailure =
   | MissingUrl
@@ -56,7 +49,8 @@ type walletFlowData = {flow: walletFlow, connector?: string}
 
 type walletFailureData = {reason: walletFailure, connector?: string}
 type vaultFailureData = {reason: vaultFailure}
-type threeDsChallengeData = {transStatus: string}
+type transStatusData = {transStatus: string}
+
 type threeDsMethodFailureData = {reason: threeDsMethodFailure}
 type threeDsPopupFailureData = {reason: threeDsPopupFailure}
 type ddcFailureData = {reason: ddcFailure}
@@ -66,12 +60,10 @@ type customerRedirectData = {nextAction: string, redirectMode?: string, redirect
 type redirectFailureData = {nextAction: string, recovered: bool}
 type unknownPaymentMethodData = {value: string}
 type unsupportedConnectorData = {connector: string}
-type threeDsAuthOutcomeData = {transStatus: string}
 type paymentStatusUnknownData = {inferred: bool}
 
 type lifecycleEvent =
   | ElementIframeMounted
-  | ElementOptionsUpdated
   | AppRendered
   | PaymentSucceeded(paymentOutcomeData)
   | PaymentFailed(paymentOutcomeData)
@@ -81,18 +73,17 @@ type lifecycleEvent =
   | WalletStageReached(walletStageData)
   | WalletFlowFailed(walletFailureData)
   | WalletFlowExited
-  | VaultFormCreated
+  | WalletTokenReceived
   | VaultFlowFailed(vaultFailureData)
-  | BankAuthWidgetReady
-  | BankAuthSyncFailed
+  | BankAuthSyncFailed({status: string})
   | BankAuthConnectorUnsupported(unsupportedConnectorData)
   | CustomerRedirectStarted(customerRedirectData)
   | RedirectUnsupported(redirectFailureData)
   | ThreeDsPopupRequested
   | ThreeDsPopupFailed(threeDsPopupFailureData)
-  | ThreeDsChallengeShown(threeDsChallengeData)
-  | ThreeDsFrictionlessResolved(threeDsAuthOutcomeData)
-  | ThreeDsAuthContainerMissing
+  | ThreeDsChallengeShown(transStatusData)
+  | ThreeDsFrictionlessResolved(transStatusData)
+  | ThreeDsAuthContainerMissing(transStatusData)
   | ThreeDsAuthRequestFailed
   | ThreeDsMethodStarted
   | ThreeDsMethodCompleted
@@ -120,12 +111,13 @@ let walletFailureSeverity = reason =>
   | ClientCreationFailed
   | AvailabilityCheckFailed
   | ListenerSetupFailed
-  | SdkMountFailed => Warning
+  | SdkMountFailed =>
+    Warning
   | MissingNonce
   | ClientUnavailable
   | MessageHandlingFailed
-  | PaymentDataFailed
-  | PaymentSyncFailed => Error
+  | PaymentDataFailed =>
+    Error
   }
 
 let threeDsMethodFailureSeverity = reason =>
@@ -136,59 +128,56 @@ let threeDsMethodFailureSeverity = reason =>
 
 let vaultFailureSeverity = reason =>
   switch reason {
-  | ScriptUnavailable
   | FieldBindingFailed
   | FieldMountFailed
-  | FormCreationFailed => Error
+  | FormCreationFailed =>
+    Error
   | FieldUpdateFailed
-  | FieldUnmountFailed => Warning
+  | FieldUnmountFailed =>
+    Warning
   }
 
 let lifecycleSeverity = value =>
   switch value {
   | ElementIframeMounted
-  | ElementOptionsUpdated
   | WalletFlowResolved(_)
   | WalletStageReached(_)
-  | VaultFormCreated
-  | CustomerRedirectStarted(_)
   | ThreeDsPopupRequested
   | ThreeDsMethodStarted
+  | ThreeDsMethodCompleted
   | DdcStarted
-  | BankAuthWidgetReady
-  | WalletFlowExited
-  | EligibilityCheckCancelled => Debug
-
+  | DdcCompleted
+  | CountryDataServedFromBundle
+  | EligibilityCheckCancelled =>
+    Debug
   | AppRendered
   | PaymentSucceeded(_)
   | PaymentFailed(_)
+  | WalletTokenReceived
+  | CustomerRedirectStarted(_)
   | ThreeDsChallengeShown(_)
   | ThreeDsFrictionlessResolved(_)
-  | ThreeDsMethodCompleted
-  | DdcCompleted
   | QrCodeShown
   | VoucherShown
-  | BankTransferShown => Info
-
+  | BankTransferShown =>
+    Info
   | ThreeDsMethodTimedOut
   | DdcTimedOut
   | BankAuthConnectorUnsupported(_)
   | PaymentMethodUnresolved(_)
   | PaymentStatusUnknown(_)
-  | CountryDataServedFromBundle
-  | EligibilityCheckFailed => Warning
-
+  | WalletFlowExited
+  | EligibilityCheckFailed =>
+    Warning
   | PaymentRejected
-  | ThreeDsAuthContainerMissing
+  | ThreeDsAuthContainerMissing(_)
   | ThreeDsAuthRequestFailed
-  | BankAuthSyncFailed
+  | BankAuthSyncFailed(_)
   | CountryDataUnavailable
-  | DdcFailed(_) => Error
-
+  | DdcFailed(_) =>
+    Error
   | ThreeDsPopupFailed(_) => Error
-
   | RedirectUnsupported({recovered}) => recovered ? Warning : Error
-
   | VaultFlowFailed({reason}) => reason->vaultFailureSeverity
   | WalletFlowFailed({reason}) => reason->walletFailureSeverity
   | ThreeDsMethodFailed({reason}) => reason->threeDsMethodFailureSeverity
@@ -207,13 +196,14 @@ type formCompletionData = {savedMethod: bool}
 
 type stateEvent =
   | NetworkStatusChanged(networkData)
+  | ElementOptionsChanged
   | LoaderStateChanged(loaderData)
   | CardFormMounted(cardFormData)
   | CardFormUnmounted(cardFormData)
   | CardFieldMounted(cardFieldData)
   | CardFieldUnmounted(cardFieldData)
   | DynamicFieldsChanged
-  | PaymentFormCompletionChanged(formCompletionData)
+  | PaymentFormCompleted(formCompletionData)
   | UpdateIntentProgressChanged(updateIntentData)
   | ClickToPayViewChanged(clickToPayViewData)
 
@@ -223,14 +213,16 @@ let stateSeverity = value =>
   | LoaderStateChanged({state: Loaded}) => Info
   | NetworkStatusChanged({online}) => online ? Debug : Warning
   | LoaderStateChanged(_)
+  | ElementOptionsChanged
   | CardFormMounted(_)
   | CardFormUnmounted(_)
   | CardFieldMounted(_)
   | CardFieldUnmounted(_)
   | DynamicFieldsChanged
-  | PaymentFormCompletionChanged(_)
+  | PaymentFormCompleted(_)
   | UpdateIntentProgressChanged(_)
-  | ClickToPayViewChanged(_) => Debug
+  | ClickToPayViewChanged(_) =>
+    Debug
   }
 
 type view =
@@ -259,7 +251,11 @@ type savedMethodSelectionData = {requiresCvv: bool, isCardExpired: bool}
 type viewData = {view: view, expanded: bool}
 type openedViewData = {view: openedView}
 type submitData = {source: submitSource}
-type verificationData = {source: verificationSource}
+
+type verificationData = {
+  source: verificationSource,
+  provider: option<LoggerTaxonomy.clickToPayProvider>,
+}
 
 type userEvent =
   | PaymentMethodSelected(methodData)
@@ -267,7 +263,6 @@ type userEvent =
   | SavedMethodSelected(savedMethodSelectionData)
   | SavedMethodUpdateRequested
   | SavedMethodDeleteRequested
-  | WalletTokenReceived
   | PaymentSubmitted(submitData)
   | CustomerVerificationSubmitted(verificationData)
   | BankDetailsConfirmed
@@ -291,7 +286,6 @@ let userSeverity = value =>
   | SavedMethodSelected(_)
   | SavedMethodUpdateRequested
   | SavedMethodDeleteRequested
-  | WalletTokenReceived
   | PaymentSubmitted(_)
   | CustomerVerificationSubmitted(_)
   | ExpressCheckoutClicked
@@ -299,15 +293,22 @@ let userSeverity = value =>
   | ThreeDsPopupDismissed
   | VoucherDownloadRequested
   | QrCodeCopyRequested
-  | ClickToPayOtpResendRequested => Info
   | BankDetailsConfirmed
+  | ClickToPayOtpResendRequested =>
+    Info
   | FieldEdited(_)
   | FieldToggled(_)
   | FieldFocused(_)
   | FieldBlurred(_)
   | ViewToggled(_)
-  | ViewOpened(_) => Debug
+  | ViewOpened(_) =>
+    Debug
   }
+
+type vaultTokenizeScope =
+  | SaveCardCvc
+  | FullCard
+type vaultTokenizeData = {scope: vaultTokenizeScope}
 
 type apiEvent =
   | RetrievePaymentIntent
@@ -328,8 +329,8 @@ type apiEvent =
   | PaymentMethodsAuthLink
   | PaymentMethodsAuthExchange
   | TaxCalculation
-  | SdkConfigs
   | ClientList
+  | VaultTokenization(vaultTokenizeData)
 
 let apiSpec = value => makeOperation(request, value->LoggerUtils.variantName)
 
@@ -344,9 +345,10 @@ let apiSeverity = value =>
 
 type functionEvent =
   | LoadPaymentSheet
+  | LoadPaymentData
   | IsReadyToPay
-  | Authorize
-  | ExecutePayment
+  | FinishApplePaymentV2
+  | ExecuteGooglePayment
   | BraintreeClientCreate
   | BraintreeApplePayCreate
   | BraintreePerformValidation
@@ -354,6 +356,8 @@ type functionEvent =
   | KlarnaInit
   | KlarnaLoad
   | PaypalButtonsRender
+  | PlaidCreate
+  | VaultFormCreate
 
 let functionSpec = value => makeOperation(call, value->LoggerUtils.variantName)
 
@@ -361,15 +365,18 @@ let functionSeverity = value =>
   switch value {
   | IsReadyToPay => {success: Debug, failure: Warning}
   | LoadPaymentSheet
-  | Authorize
-  | ExecutePayment
+  | LoadPaymentData
+  | FinishApplePaymentV2
+  | ExecuteGooglePayment
   | BraintreeClientCreate
   | BraintreeApplePayCreate
   | BraintreePerformValidation
   | BraintreeTokenize
   | KlarnaInit
   | KlarnaLoad
-  | PaypalButtonsRender => {success: Debug, failure: Error}
+  | PaypalButtonsRender
+  | PlaidCreate
+  | VaultFormCreate => {success: Debug, failure: Error}
   }
 
 type resourceEvent =
@@ -404,12 +411,15 @@ let resourceSeverity = value =>
   | FontStylesheet => {success: Debug, failure: Warning}
   }
 
-type staticAssetEvent = | CountryStateData
+type staticAssetEvent =
+  | CountryStateData
+  | SdkConfigs
 
 let staticAssetSpec = value => makeOperation(load, value->LoggerUtils.variantName)
 
 let staticAssetSeverity = value =>
   switch value {
+  | SdkConfigs => {success: Debug, failure: Error}
   | CountryStateData => {success: Debug, failure: Warning}
   }
 
@@ -424,12 +434,18 @@ type crashOrigin =
   | UncaughtError
   | UnhandledRejection
   | EntryPoint
+  | ElementConstructor
+  | ParentWindowMessage
 
 type degradedSurface =
   | WalletButton
   | PaymentMethodPane
-  | ParentWindowMessage
-  | ElementConstructor
+
+let degradedSeverity = surface =>
+  switch surface {
+  | WalletButton => Warning
+  | PaymentMethodPane => Error
+  }
 
 let logLifecycle = (
   ~event: lifecycleEvent,
@@ -443,7 +459,7 @@ let logLifecycle = (
     ~category=Lifecycle,
     ~spec=event->LoggerUtils.deriveEvent,
     ~severity=event->lifecycleSeverity,
-    ~data=event->LoggerUtils.recordDetails,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~exn?,
     ~failure?,
@@ -463,7 +479,7 @@ let logState = (
     ~category=State,
     ~spec=event->LoggerUtils.deriveNotification,
     ~severity=event->stateSeverity,
-    ~data=event->LoggerUtils.recordDetails,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~exn?,
     ~failure?,
@@ -494,7 +510,12 @@ let isFirstEditOf = field => {
     editedFields := (sessionId, fields)
     fields
   }
-  fields->Set.has(field) ? false : {fields->Set.add(field); true}
+  fields->Set.has(field)
+    ? false
+    : {
+        fields->Set.add(field)
+        true
+      }
 }
 
 let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
@@ -514,7 +535,7 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
       ~category=User,
       ~spec=event->LoggerUtils.deriveNotification,
       ~severity=event->userSeverity,
-      ~data=event->LoggerUtils.recordDetails,
+      ~data=event->LoggerUtils.eventDetails,
       ~details,
       ~paymentMethod?,
     )
@@ -524,7 +545,7 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
 let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[]) =>
   LoggerRuntime.emit(
     ~category=Crash,
-    ~spec={action: None, subject: origin->LoggerUtils.variantName, outcome: None},
+    ~spec=origin->LoggerUtils.deriveEvent,
     ~severity=Error,
     ~details,
     ~exn?,
@@ -533,12 +554,8 @@ let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[]) =>
 let logDegraded = (~surface: degradedSurface, ~exn=?, ~details=[]) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
-    ~spec={
-      action: None,
-      subject: surface->LoggerUtils.variantName,
-      outcome: Some(Failed),
-    },
-    ~severity=Error,
+    ~spec=surface->LoggerUtils.deriveFailure,
+    ~severity=surface->degradedSeverity,
     ~details,
     ~exn?,
   )
@@ -609,31 +626,20 @@ let catchGlobalCrashes = (~ownsDocument) => {
   })
 }
 
-let httpFailure = response =>
-  response->Fetch.Response.ok
-    ? None
-    : Some({
-        name: "HTTP_ERROR",
-        message: Some(response->Fetch.Response.status->Int.toString),
-        details: [],
-      })
-
-let httpDetails = response => [("status_code", response->Fetch.Response.status->JSON.Encode.int)]
-
 let observeApi = (
   ~event: apiEvent,
   ~url,
   ~details=[],
   ~timeoutMs=?,
-  ~failureOf=httpFailure,
-  ~detailsOf=httpDetails,
+  ~failureOf=LoggerUtils.httpFailure,
+  ~detailsOf=LoggerUtils.httpDetails,
   ~call,
 ) =>
   LoggerRuntime.observe(
     ~category=Api,
     ~spec=event->apiSpec,
     ~severity=event->apiSeverity,
-    ~data=[("url", url->JSON.Encode.string)],
+    ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
     ~timeoutMs?,
     ~failureOf,
@@ -646,18 +652,20 @@ let observeStaticAsset = (
   ~url,
   ~details=[],
   ~timeoutMs=?,
-  ~failureOf=httpFailure,
-  ~detailsOf=httpDetails,
+  ~failureOf=LoggerUtils.httpFailure,
+  ~detailsOf=LoggerUtils.httpDetails,
   ~call,
 ) =>
   LoggerRuntime.observe(
     ~category=Resource,
     ~spec=event->staticAssetSpec,
     ~severity=event->staticAssetSeverity,
-    ~data=[
+    ~data=event
+    ->LoggerUtils.eventDetails
+    ->Array.concat([
       ("url", url->JSON.Encode.string),
       ("resource_type", "static_asset"->JSON.Encode.string),
-    ],
+    ]),
     ~details,
     ~timeoutMs?,
     ~failureOf,
@@ -665,7 +673,20 @@ let observeStaticAsset = (
     ~call,
   )
 
-let recordFunction = (
+let logApi = (~event: apiEvent, ~outcome, ~details=[], ~startedAt=?, ~exn=?, ~paymentMethod=?) =>
+  LoggerRuntime.emitPhase(
+    ~category=Api,
+    ~spec=event->apiSpec,
+    ~severity=event->apiSeverity,
+    ~outcome,
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
+    ~startedAt?,
+    ~exn?,
+    ~paymentMethod?,
+  )
+
+let logFunction = (
   ~event: functionEvent,
   ~outcome,
   ~details=[],
@@ -673,14 +694,15 @@ let recordFunction = (
   ~exn=?,
   ~paymentMethod=?,
 ) =>
-  LoggerRuntime.recordPhase(
+  LoggerRuntime.emitPhase(
     ~category=Function,
     ~spec=event->functionSpec,
     ~severity=event->functionSeverity,
     ~outcome,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~startedAt?,
-    ~error=?exn->Option.map(LoggerUtils.summarizeValue),
+    ~exn?,
     ~paymentMethod?,
   )
 
@@ -697,6 +719,7 @@ let observeFunction = (
     ~category=Function,
     ~spec=event->functionSpec,
     ~severity=event->functionSeverity,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
     ~failureOf?,

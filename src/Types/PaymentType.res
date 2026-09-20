@@ -1469,13 +1469,6 @@ let getBankRedirect = dict => {
   }
 }
 
-// --- clientList (`fetchClientList`) customer_payment_methods decoder ---
-//
-// clientList's customer_payment_methods entries nest card details under
-// `payment_method_data.card` (not a sibling `card` key), and lack
-// `payment_method_id`/`customer_id`/`payment_method_issuer`/`bank`/`billing`
-// entirely — known, accepted gaps (see migration plan), all defaulted the
-// same way the old decoder already defaults them when the key is absent.
 let getCustomerCardDetailsFromPaymentMethodData = dict => {
   dict
   ->getDictFromDict("payment_method_data")
@@ -1678,7 +1671,7 @@ let itemToObjMapper = dict => {
   unknownKeysWarning(allowedPaymentElementOptions, dict, "options")
 
   HyperLoaderLogger.logMerchantProps(
-    ~event=ElementsProp(PaymentElementOptions),
+    ~event=PaymentElementProp(PaymentElementOptions),
     ~details=[("options", dict->sanitizePaymentElementOptions->JSON.Encode.object)],
   )
 
@@ -1693,7 +1686,7 @@ let itemToObjMapper = dict => {
     ("paymentMethodsConfig", PaymentMethodsConfig),
   ]->Array.forEach(((key, prop)) =>
     switch dict->Dict.get(key) {
-    | Some(_) => HyperLoaderLogger.logMerchantProps(~event=ElementsProp(prop))
+    | Some(_) => HyperLoaderLogger.logMerchantProps(~event=PaymentElementProp(prop))
     | None => ()
     }
   )
@@ -1793,7 +1786,7 @@ let convertClickToPayCardToCustomerMethod = (
   }
   {
     paymentToken: clickToPayCard.srcDigitalCardId,
-    customerId: "", // Empty as Click to Pay doesn't provide this
+    customerId: "",
     paymentMethod: "card",
     card: {
       scheme: cardScheme,
@@ -1807,18 +1800,18 @@ let convertClickToPayCardToCustomerMethod = (
       cardBin: "",
     },
     paymentMethodType: Some("click_to_pay"),
-    defaultPaymentMethodSet: false, // Default to false as Click to Pay doesn't provide this
-    requiresCvv: false, // Click to Pay handles CVV internally
-    lastUsedAt: Js.Date.make()->Js.Date.toISOString, // Current timestamp as Click to Pay doesn't provide this
+    defaultPaymentMethodSet: false,
+    requiresCvv: false,
+    lastUsedAt: Js.Date.make()->Js.Date.toISOString,
     bank: {
-      mask: "", // Just use the mask field that exists in the type
+      mask: "",
     },
     bankRedirect: {
       bankName: "",
       accountHolderName: "",
       mask: "",
     },
-    recurringEnabled: true, // Since Click to Pay cards can be used for recurring payments
+    recurringEnabled: true,
     billing: defaultDisplayBillingDetails,
   }
 }

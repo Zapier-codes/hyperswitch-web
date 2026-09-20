@@ -131,7 +131,7 @@ let make = (
       setIframeRef(ref)
     }
     let getElement = componentName =>
-      HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Elements(GetElement), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(GetElement), ~call=() =>
         savedPaymentElement->Dict.get(componentName)
       )
     let updateInternal = newOptions => {
@@ -159,12 +159,12 @@ let make = (
       })
     }
     let update = newOptions =>
-      HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
         updateInternal(newOptions)
       )
     let fetchUpdates = () =>
       {
-        HyperLoaderLogger.recordMerchantCall(
+        HyperLoaderLogger.logMerchantCall(
           ~event=HyperLoaderLogger.Elements(FetchUpdates),
           ~details=[("implemented", false->JSON.Encode.bool)],
         )
@@ -267,7 +267,7 @@ let make = (
       paymentElement
     }
     let create = (componentTypeOrOptions: JSON.t, legacyOptions: Nullable.t<JSON.t>) =>
-      HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
         createInternal(componentTypeOrOptions, legacyOptions)
       )
     {
@@ -275,7 +275,13 @@ let make = (
       update,
       fetchUpdates,
       create,
-      updateIntent: _ => Promise.resolve(JSON.Encode.null),
+
+      updateIntent: _ =>
+        HyperLoaderLogger.observeMerchantCall(
+          ~event=HyperLoaderLogger.Elements(UpdateIntent),
+          ~details=[("supported", false->JSON.Encode.bool)],
+          ~call=() => Promise.resolve(JSON.Encode.null),
+        ),
       createCardForm: () => defaultCardForm,
     }
   } catch {

@@ -32,7 +32,6 @@ let make = () => {
         let metadata = dict->getJsonObjectFromDict("metadata")
         let metaDataDict = metadata->JSON.Decode.object->Option.getOr(Dict.make())
         let clientSecret = metaDataDict->getString("clientSecret", "")
-        let publishableKey = metaDataDict->getString("publishableKey", "")
         let sdkAuthorization = metaDataDict->getOptionString("sdkAuthorization")
         let headersDict =
           metaDataDict
@@ -97,8 +96,7 @@ let make = () => {
               }
             | None =>
               SdkLogger.logLifecycle(
-                ~event=ThreeDsAuthContainerMissing,
-                ~details=[("trans_status", transStatus->JSON.Encode.string)],
+                ~event=ThreeDsAuthContainerMissing({transStatus: transStatus}),
                 ~paymentMethod=Card(Unspecified),
               )
             }

@@ -47,14 +47,16 @@ module OtpInput = {
         })
       },
       continueClicked: _ => {
-        SdkLogger.logUser(~event=CustomerVerificationSubmitted({source: ClickToPayOtp}))
+        SdkLogger.logUser(
+          ~event=CustomerVerificationSubmitted({source: ClickToPayOtp, provider: Some(VisaUctp)}),
+        )
         let verifyUserAndGetCards = async () => {
           try {
             setIsOtpSubmitting(_ => true)
             await getCards(otpValueRef.current)
             setIsOtpSubmitting(_ => false)
           } catch {
-          | err => ClickToPayLogger.logLifecycle(~event=OtpRejected, ~exn=err)
+          | err => ClickToPayLogger.logLifecycle(~event=OtpRejected({provider: VisaUctp}), ~exn=err)
           }
         }
         verifyUserAndGetCards()->ignore

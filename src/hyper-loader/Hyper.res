@@ -67,7 +67,6 @@ let handleHyperApplePayMounted = (event: Types.event) => {
     let publishableKey = dict->getString("publishableKey", "")
     let isTaxCalculationEnabled = dict->getBool("isTaxCalculationEnabled", false)
     let sdkSessionId = dict->getString("sdkSessionId", "")
-    let _analyticsMetadata = dict->getJsonFromDict("analyticsMetadata", JSON.Encode.null)
     let isSavedMethodsFlow = dict->getBool("isSavedMethodsFlow", false)
 
     LoggerContext.setSessionData(~sessionId=sdkSessionId, ~merchantId=publishableKey, ())
@@ -113,14 +112,11 @@ let handleHyperApplePayMounted = (event: Types.event) => {
 
 addSmartEventListener("message", handleHyperApplePayMounted, "onHyperApplePayMount")
 
-let isReadyResolved = ref(false)
-
 let isReadyPromise = Promise.make((resolve, _) => {
   let handleOnReady = (event: Types.event) => {
     let json = event.data->anyTypeToJson
     let dict = json->getDictFromJson
     if dict->getBool("ready", false) {
-      isReadyResolved := true
       resolve(Date.now())
     }
   }
@@ -148,7 +144,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       ->getOptionsDict
       ->getBool("isTestMode", false)
 
-    // INFO: kept for backwards compatibility - remove once removed from hyperswitch backend and deployed
     let shouldUseTopRedirection =
       options
       ->getOptionsDict
@@ -162,12 +157,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       ->getOptionsDict
       ->getJsonObjectFromDict("redirectionFlags")
       ->JotaiAtomTypes.decodeRedirectionFlags(overridenDefaultRedirectionFlags)
-
-    /*
-     * Forces re-initialization of HyperLoader.
-     * If HyperLoader is already loaded and needs to reload with an updated publishable key,
-     * this flag ensures the script is remounted and re-executed.
-     */
 
     let isForceInit =
       options
@@ -194,10 +183,14 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     let sdkTimestamp = analyticsInfoDict->getString("timeStamp", Date.now()->Float.toString)
     HyperLoaderLogger.startSession(~sessionId=sessionID, ~merchantId=publishableKey, ~profileId)
 
-    HyperLoaderLogger.logMerchantProps(
-      ~event=HyperProp(TestMode),
-      ~details=[("is_test_mode", isTestMode->JSON.Encode.bool)],
-    )
+    switch options->getOptionsDict->Dict.get("isTestMode") {
+    | Some(_) =>
+      HyperLoaderLogger.logMerchantProps(
+        ~event=HyperProp(TestMode),
+        ~details=[("test_mode", isTestMode->JSON.Encode.bool)],
+      )
+    | None => ()
+    }
 
     switch options {
     | Some(userOptions) =>
@@ -240,13 +233,13 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           ~profileId,
           (),
         )
-        HyperLoaderLogger.logMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(Init),
-          ~details=[
-            ("timestamp", sdkTimestamp->JSON.Encode.string),
-          ],
-          ~call=() => (),
-        )
+
+        if !isReinit {
+          HyperLoaderLogger.logMerchantCall(
+            ~event=HyperLoaderLogger.Hyper(Init),
+            ~details=[("timestamp", sdkTimestamp->JSON.Encode.string)],
+          )
+        }
       }
     }->Sentry.sentryLogger
     let isSecure = Window.isSecureContext
@@ -256,7 +249,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     }
     switch Window.getHyper->Nullable.toOption {
     | Some(hyperMethod) if !isForceInit =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.Hyper(Reinit),
         ~details=[("timestamp", sdkTimestamp->JSON.Encode.string)],
         ~call=() => hyperMethod,
@@ -270,7 +263,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           HyperLoaderLogger.logMerchantCall(
             ~event=HyperLoaderLogger.Hyper(LoadHyper),
             ~details=[("timestamp", loaderTimestamp->JSON.Encode.string)],
-            ~call=() => (),
           )
           if (
             publishableKey == "" ||
@@ -312,21 +304,17 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         iframeRef.contents->Array.push(ref)->ignore
       }
 
-      // Shared refs for updateIntent — created once, passed to both Elements and PaymentSession.
       let isUpdateIntentInProgress = ref(false)
       let emptyJsonPromise = Promise.resolve(JSON.Encode.null)
       let sessionTokensDataPromise = ref(emptyJsonPromise)
       let sdkConfigsDataPromise = ref(emptyJsonPromise)
       let clientListDataPromise = ref(emptyJsonPromise)
-      // TODO(sdk-configs): profileId is available here at init time for consumers who provide
-      // it at Hyper.init stage. sdk-configs could be prefetched early (before elements() is
-      // called) for a latency optimisation. Currently deferred to PreMountLoader for consistency.
 
       let retrievePaymentIntentApiCall = async clientSecretOrSdkAuth => {
-        // Try to decode as base64 — if decodable, it's an SDK authorization token.
+
         let (actualClientSecret, sdkAuthorizationValue) = try {
           clientSecretOrSdkAuth->Utils.getSdkAuthorizationData->ignore
-          // Successfully decoded — treat as SDK auth; clientSecret is not embedded
+
           ((None: option<string>), Some(clientSecretOrSdkAuth))
         } catch {
         | _ => (Some(clientSecretOrSdkAuth), None)
@@ -414,7 +402,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
                   if isOneClick {
                     iframeRef.contents->Array.forEach(
                       ifR => {
-                        // to unset one click button loader
+
                         ifR->Window.iframePostMessage(
                           [("oneClickDoSubmit", false->JSON.Encode.bool)]->Dict.fromArray,
                         )
@@ -463,9 +451,9 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         }
       }
 
-      let confirmPayment = payload =>
+      let observeGatedConfirm = (event, payload) =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmPayment),
+          ~event,
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() =>
             if isUpdateIntentInProgress.contents {
@@ -475,17 +463,11 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
             },
         )
 
+      let confirmPayment = payload =>
+        observeGatedConfirm(HyperLoaderLogger.Hyper(ConfirmPayment), payload)
+
       let confirmTokenization = payload =>
-        HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmTokenization),
-          ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
-          ~call=() =>
-            if isUpdateIntentInProgress.contents {
-              Promise.resolve(UpdateIntentHelpersNew.confirmBlockedResponse())
-            } else {
-              confirmPaymentWrapper(payload, false, true)
-            },
-        )
+        observeGatedConfirm(HyperLoaderLogger.Hyper(ConfirmTokenization), payload)
 
       let confirmOneClickPayment = (payload, result: bool) =>
         HyperLoaderLogger.observeMerchantCall(
@@ -559,13 +541,13 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       }
 
       let elements = elementsOptions =>
-        HyperLoaderLogger.logMerchantCall(
+        HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.Hyper(CreateElements),
           ~call=() => makeElements(elementsOptions),
         )
 
       let widgets = elementsOptions =>
-        HyperLoaderLogger.logMerchantCall(
+        HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.Hyper(CreateWidgets),
           ~call=() => makeElements(elementsOptions),
         )
@@ -585,7 +567,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           pmManagementOptionsDict->Option.mapOr(pmManagementOptions, JSON.Encode.object)
         pmSessionId := pmSessionIdVal
 
-        HyperLoaderLogger.logMerchantCall(
+        HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.Hyper(PaymentMethodsManagementElements),
           ~call=() =>
             PaymentMethodsManagementElements.make(
@@ -706,11 +688,20 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
             ("requestShipping", requestShipping),
             ("shippingType", "shipping"->JSON.Encode.string),
           ]->getJsonFromArrayOfJson
-        Window.paymentRequest(methodData, details, optionsForPaymentRequest)
+        switch Window.paymentRequestSupported {
+        | Some(_) => Window.paymentRequest(methodData, details, optionsForPaymentRequest)
+        | None => {
+            HyperLoaderLogger.logMerchantIssue(
+              ~issue=UnsupportedOptionValue,
+              ~details=[("method", "paymentRequest"->JSON.Encode.string)],
+            )
+            Exn.raiseError("PaymentRequest is not supported in this browser")
+          }
+        }
       }
 
       let paymentRequest = options =>
-        HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Hyper(PaymentRequest), ~call=() =>
+        HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Hyper(PaymentRequest), ~call=() =>
           makePaymentRequest(options)
         )
 
@@ -721,7 +712,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
         clientSecret := paymentSessionOptionsDict->Utils.getStringFromDict("clientSecret", "")
 
-        HyperLoaderLogger.logMerchantCall(
+        HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.Hyper(InitPaymentSession),
           ~call=() =>
             PaymentSession.make(
@@ -805,7 +796,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           ->Option.getOr("")
         clientSecret := clientSecretId
 
-        HyperLoaderLogger.logMerchantCall(
+        HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.Hyper(InitAuthenticationSession),
           ~call=() =>
             AuthenticationSession.make(
@@ -831,7 +822,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         initiateUpdateIntent,
         confirmTokenization,
         initPaymentMethodSession: options =>
-          HyperLoaderLogger.logMerchantCall(
+          HyperLoaderLogger.observeMerchantCall(
             ~event=HyperLoaderLogger.Hyper(InitPaymentMethodSession),
             ~call=() => PaymentMethodSession.make(options),
           ),

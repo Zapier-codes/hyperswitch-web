@@ -61,11 +61,6 @@ let make = (
       ->Option.flatMap(JSON.Decode.string)
       ->Option.getOr("")
 
-    HyperLoaderLogger.logMerchantProps(
-      ~event=HyperLoaderLogger.ElementsProp(TestMode),
-      ~details=[("is_test_mode", isTestMode->JSON.Encode.bool)],
-    )
-
     if preloadSDKWithParams->Dict.toArray->Array.length > 0 {
       HyperLoaderLogger.logMerchantProps(
         ~event=HyperLoaderLogger.ElementsProp(PreloadSdkWithParams),
@@ -155,18 +150,10 @@ let make = (
 
     let isTaxCalculationEnabled = ref(false)
 
-    // Only payment element iframes — used for overlay during updateIntent.
-    // Other widgets (CVC, expressCheckout, etc.) don't handle overlay removal
-    // and don't send the "ready" signal, so they must be excluded.
     let paymentElementIframeRef: array<Nullable.t<Dom.element>> = []
 
     let isSdkParamsEnabled = preloadSDKWithParams->Dict.toArray->Array.length > 0
 
-    // --- Initial preMountLoader setup ---
-    // TODO(sdk-configs): For consumers who provide profileId at Hyper.init time (before
-    // elements() is called), the sdk-configs API call could be prefetched early in Hyper.make()
-    // and the result passed in here, avoiding the round-trip through PreMountLoader.
-    // Currently deferred to PreMountLoader for consistency with the other 3 pre-mount calls.
     let (
       initialSessionTokensPromise,
       initialSdkConfigsPromise,
@@ -183,9 +170,6 @@ let make = (
       ~currentSdkAuthorization=sdkAuthorizationRef.contents,
     )
 
-    // Extract isTaxCalculationEnabled from the clientList response
-    // (Elements-specific). clientList nests this under intent_data, unlike
-    // the old paymentMethods response which had it at the top level.
     initialClientListPromise
     ->Promise.then(json => {
       isTaxCalculationEnabled.contents =
@@ -198,7 +182,6 @@ let make = (
     ->Promise.catch(_ => Promise.resolve(JSON.Encode.null))
     ->ignore
 
-    // Store initial data promises in shared refs so they're accessible during updateIntent
     sessionTokensDataPromise.contents = initialSessionTokensPromise
     sdkConfigsDataPromise.contents = initialSdkConfigsPromise
     clientListDataPromise.contents = initialClientListPromise
@@ -250,8 +233,6 @@ let make = (
         )->Option.isSome
 
         if isApplePayPresent || isGooglePayPresent {
-          // Install the ApplePaySession proxy and schedule the TrustPayApi patch
-          // BEFORE the TrustPay script tag is appended to the DOM.
           ApplePayInterceptor.initializeApplePayInterceptor()
 
           let trustPayScriptURL =
@@ -271,15 +252,8 @@ let make = (
           )->ignore
         }
 
-        // Dev/test preload override — reads against the clientList-shaped
-        // JSON now, keeping its own existing key name unchanged.
         let paymentMethodList = preloadSDKWithParams->getJsonFromDict("paymentMethodsList", json)
-        // When the merchant has disabled saved payment methods, strip
-        // customer_payment_methods from the outgoing payload before it ever
-        // reaches the iframe's JS runtime, so saved-card data is never sent
-        // at all in that case. A single "clientList" message is always sent
-        // (never a second, duplicate one) so the receiving handler only ever
-        // runs once per update.
+
         let outgoingPaymentMethodList = if disableSavedPaymentMethods {
           let strippedDict = paymentMethodList->getDictFromJson->Dict.copy
           strippedDict->Dict.set("customer_payment_methods", []->JSON.Encode.array)
@@ -293,8 +267,6 @@ let make = (
       })
     }
 
-    // Top-level session tokens forwarder for updateIntent use.
-    // The full forwardSessionTokensToIframe (with wallet client setup) is inside mountPostMessage.
     let forwardSessionTokensDataToIframe = mountedIframeRef => {
       sessionTokensDataPromise.contents->Promise.then(json => {
         let sessionTokens = preloadSDKWithParams->getJsonFromDict("sessionTokens", json)
@@ -325,7 +297,7 @@ let make = (
       setIframeRef(ref)
     }
     let getElement = componentName =>
-      HyperLoaderLogger.logMerchantCall(~event=Elements(GetElement), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=Elements(GetElement), ~call=() =>
         savedPaymentElement->Dict.get(componentName)
       )
     let updateElementsOptions = newOptions => {
@@ -358,12 +330,12 @@ let make = (
     }
 
     let update = newOptions =>
-      HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
         updateElementsOptions(newOptions)
       )
 
     let fetchUpdates = () => {
-      HyperLoaderLogger.recordMerchantCall(
+      HyperLoaderLogger.logMerchantCall(
         ~event=Elements(FetchUpdates),
         ~details=[("implemented", false->JSON.Encode.bool)],
       )
@@ -378,7 +350,6 @@ let make = (
       if isUpdateIntentInProgress.contents {
         updateIntentInProgressResponse()
       } else {
-        // Show overlay only on payment element iframes (CVC/expressCheckout don't handle overlay)
         setOverlayLoading(paymentElementIframeRef, true)
 
         let response = await performUpdateIntent(
@@ -401,12 +372,9 @@ let make = (
           ~merchantEvent=HyperLoaderLogger.Elements(UpdateIntent),
         )
 
-        // Only forward data and update tax calculation if updateIntent succeeded
         let isSuccess = response->getDictFromJson->getString("status", "") === "succeeded"
 
         if isSuccess {
-          // Extract isTaxCalculationEnabled from latest clientList response.
-          // clientList nests this under intent_data.
           clientListDataPromise.contents
           ->Promise.then(json => {
             isTaxCalculationEnabled.contents =
@@ -419,7 +387,6 @@ let make = (
           ->Promise.catch(_ => Promise.resolve(JSON.Encode.null))
           ->ignore
 
-          // Forward fresh data to all Elements iframes (reusing existing forward functions)
           let _ = await Promise.all(
             iframeRef->Array.map(iframe => {
               Promise.all([
@@ -431,7 +398,6 @@ let make = (
           )
         }
 
-        // Always hide overlay on payment element iframes
         setOverlayLoading(paymentElementIframeRef, false)
 
         response
@@ -464,7 +430,6 @@ let make = (
       | str => Console.warn(`Unknown Key: ${str} type in create`)
       }
 
-      // Wrap setElementIframeRef so payment element iframes are also tracked separately
       let setIframeRefForComponent = ref => {
         setElementIframeRef(ref)
         if componentType === "payment" {
@@ -561,9 +526,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "APPLE_PAY"->JSON.Encode.string),
-                  ("display", "AUTO"->JSON.Encode.string),
+                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(ApplePay),
               )
               switch ApplePayTypes.sessionForApplePay->Nullable.toOption {
               | Some(session) =>
@@ -597,9 +562,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "APPLE_PAY"->JSON.Encode.string),
-                  ("display", "NEVER"->JSON.Encode.string),
+                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(ApplePay),
               )
             }
           } else if dict->Dict.get("applePayCanMakePayments")->Option.isSome {
@@ -677,7 +642,7 @@ let make = (
                         )
                       )
                     let executeGooglePayment = SdkLogger.observeFunction(
-                      ~event=ExecutePayment,
+                      ~event=ExecuteGooglePayment,
                       ~paymentMethod=Wallet(GooglePay),
                       ~details=[("connector", "trustpay"->JSON.Encode.string)],
                       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
@@ -744,11 +709,6 @@ let make = (
                 ->Option.getOr(false)
 
               if isDelayedSessionToken {
-                SdkLogger.logLifecycle(
-                  ~event=WalletFlowResolved({flow: Delayed}),
-                  ~paymentMethod=Wallet(ApplePay),
-                )
-
                 let connector =
                   applePaySessionTokenData
                   ->Dict.get("connector")
@@ -759,12 +719,10 @@ let make = (
                 switch connector {
                 | "trustpay" =>
                   SdkLogger.logLifecycle(
-                    ~event=WalletFlowResolved({flow: Connector, connector: "trustpay"}),
+                    ~event=WalletFlowResolved({flow: Delayed, connector}),
                     ~paymentMethod=Wallet(ApplePay),
                   )
 
-                  // Bind a safe closure over mountedIframeRef so the interceptor can post
-                  // "applePayConfirmRequest" back to the iframe during onvalidatemerchant.
                   ApplePayInterceptor.setPostToIframe(msg =>
                     mountedIframeRef->Window.iframePostMessage(msg)
                   )
@@ -795,24 +753,17 @@ let make = (
                     ->Option.getOr("")
 
                   clientListDataPromise.contents
-                  ->then(paymentMethodsJson => {
-                    let pmDict = paymentMethodsJson->getDictFromJson
-                    let currencyCode =
-                      pmDict->getDictFromDict("intent_data")->getString("currency", "EUR")
-                    let amountInt = pmDict->getDictFromDict("intent_data")->getInt("amount", 0)
-                    let amountStr = amountInt->Int.toString //<...>//
+                  ->then(_ => {
                     try {
-                      let newSecrets = secrets //<...>//
-                      let newPaymentRequest = paymentRequest //<...>//
-                      let trustpay = trustPayApi(newSecrets)
+                      let trustpay = trustPayApi(secrets)
                       SdkLogger.observeFunction(
-                        ~event=Authorize,
+                        ~event=FinishApplePaymentV2,
                         ~paymentMethod=Wallet(ApplePay),
                         ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
                         ~call=() =>
                           trustpay.finishApplePaymentV2(
-                            payment, //<...>//
-                            newPaymentRequest,
+                            payment,
+                            paymentRequest,
                             Window.Location.hostname,
                           ),
                       )
@@ -846,17 +797,13 @@ let make = (
                   )
                 }
               } else {
-                SdkLogger.logLifecycle(
-                  ~event=WalletFlowResolved({flow: ThirdParty}),
-                  ~paymentMethod=Wallet(ApplePay),
-                )
                 let connector = dict->Utils.getString("connector", "")
                 let authToken = dict->Utils.getString("authToken", "")
                 let applePayPaymentRequest = dict->Utils.getDictFromDict("applePayPaymentRequest")
                 switch connector {
                 | "braintree" =>
                   SdkLogger.logLifecycle(
-                    ~event=WalletFlowResolved({flow: Connector, connector}),
+                    ~event=WalletFlowResolved({flow: ThirdParty, connector}),
                     ~paymentMethod=Wallet(ApplePay),
                   )
                   ApplePayHelpers.handleApplePayBraintreeClick(
@@ -1162,9 +1109,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "GOOGLE_PAY"->JSON.Encode.string),
-                  ("display", "AUTO"->JSON.Encode.string),
+                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(GooglePay),
               )
               let dict = json->getDictFromJson
               let sessionObj = SessionsType.itemToObjMapper(dict, Others)
@@ -1355,7 +1302,7 @@ let make = (
                     switch gPayClient {
                     | Some(client) => setTimeout(() => {
                         SdkLogger.observeFunction(
-                          ~event=LoadPaymentSheet,
+                          ~event=LoadPaymentData,
                           ~paymentMethod=Wallet(GooglePay),
                           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
                           ~call=() => client.loadPaymentData(paymentDataRequest),
@@ -1368,7 +1315,7 @@ let make = (
                                 ("isSavedMethodsFlow", isSavedMethodsFlow->JSON.Encode.bool),
                               ]->Dict.fromArray
                             event.source->Window.sendPostMessage(msg)
-                            SdkLogger.logUser(
+                            SdkLogger.logLifecycle(
                               ~event=WalletTokenReceived,
                               ~paymentMethod=Wallet(GooglePay),
                             )
@@ -1416,9 +1363,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "GOOGLE_PAY"->JSON.Encode.string),
-                  ("display", "NEVER"->JSON.Encode.string),
+                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(GooglePay),
               )
             }
             if (
@@ -1429,9 +1376,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "SAMSUNG_PAY"->JSON.Encode.string),
-                  ("display", "AUTO"->JSON.Encode.string),
+                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(SamsungPay),
               )
               let dict = json->getDictFromJson
               let sessionObj = SessionsType.itemToObjMapper(dict, SamsungPayObject)
@@ -1538,9 +1485,9 @@ let make = (
               HyperLoaderLogger.logMerchantProps(
                 ~event=HyperLoaderLogger.ElementsProp(Wallets),
                 ~details=[
-                  ("wallet", "SAMSUNG_PAY"->JSON.Encode.string),
-                  ("display", "NEVER"->JSON.Encode.string),
+                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
                 ],
+                ~paymentMethod=Wallet(SamsungPay),
               )
             }
 
@@ -1580,7 +1527,7 @@ let make = (
     }
 
     let create = (componentTypeOrOptions: JSON.t, legacyOptions: Nullable.t<JSON.t>) =>
-      HyperLoaderLogger.logMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
+      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
         createElement(componentTypeOrOptions, legacyOptions)
       )
 
@@ -1589,7 +1536,7 @@ let make = (
     }
     let cardFormRef: ref<option<Types.cardForm>> = ref(StdOption.none)
     let createCardForm = (): Types.cardForm =>
-      HyperLoaderLogger.logMerchantCall(
+      HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.Elements(CreateCardForm),
         ~call=() =>
           switch cardFormRef.contents {

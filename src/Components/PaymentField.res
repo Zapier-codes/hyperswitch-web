@@ -95,7 +95,9 @@ let make = (
   let flexDirectionBasedOnType = type_ === "tel" ? "flex-row" : "flex-col"
 
   let wrappedOnChange = ev => {
-    SdkLogger.logUser(~event=FieldEdited({field: name}))
+    if name->String.length > 0 {
+      SdkLogger.logUser(~event=FieldEdited({field: name}))
+    }
     onChange(ev)
   }
 

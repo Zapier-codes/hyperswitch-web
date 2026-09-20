@@ -21,7 +21,7 @@ let make = (~sessionObj: SessionsType.token) => {
   let status = CommonHooks.useScript(
     "https://x.klarnacdn.net/kp/lib/v1/api.js",
     ~resourceEvent=SdkLogger.KlarnaScript,
-  ) // Klarna SDK script
+  )
   let paymentMethodListValue = Jotai.useAtomValue(PaymentUtils.paymentMethodListValue)
   let sdkConfigsValue = Jotai.useAtomValue(PaymentUtils.sdkConfigsValue)
   let (isCompleted, setIsCompleted) = React.useState(_ => false)
@@ -68,10 +68,20 @@ let make = (~sessionObj: SessionsType.token) => {
     if status === "ready" && paymentMethodTypes !== PaymentMethodsRecord.defaultPaymentMethodType {
       let klarnaWrapper = GooglePayType.getElementById(Utils.document, "klarna-payments")
       klarnaWrapper.innerHTML = ""
+      let initStartedAt = Date.now()
+      SdkLogger.logFunction(~event=KlarnaInit, ~outcome=Started, ~paymentMethod=PayLater(Klarna))
       klarnaInit.init({
         client_token: sessionObj.token,
       })
+      SdkLogger.logFunction(
+        ~event=KlarnaInit,
+        ~outcome=Done,
+        ~startedAt=initStartedAt,
+        ~paymentMethod=PayLater(Klarna),
+      )
 
+      let loadStartedAt = Date.now()
+      SdkLogger.logFunction(~event=KlarnaLoad, ~outcome=Started, ~paymentMethod=PayLater(Klarna))
       klarnaInit.load(
         {
           container: "#klarna-payments",
@@ -162,6 +172,12 @@ let make = (~sessionObj: SessionsType.token) => {
           },
         },
         _ => {
+          SdkLogger.logFunction(
+            ~event=KlarnaLoad,
+            ~outcome=Done,
+            ~startedAt=loadStartedAt,
+            ~paymentMethod=PayLater(Klarna),
+          )
           setAreOneClickWalletsRendered(
             prev => {
               ...prev,

@@ -9,14 +9,13 @@ let make = () => {
   let paymentType = paymentMode->CardThemeType.getPaymentMode
 
   let networkStatus = NetworkInformation.useNetworkInformation()
-  let initTimestamp = React.useMemo0(() => {
+  React.useMemo0(() => {
     LoggerRuntime.configure(~source=Elements(paymentType))
     Window.addEventListener(
       "message",
       (ev: Window.event) =>
         ev.data->Utils.safeParse->Utils.getDictFromJson->LoggerContext.startSessionFromMessage,
     )
-    Date.now()
   })
 
   React.useEffect1(() => {
@@ -84,15 +83,15 @@ let make = () => {
 
   let renderFullscreen = switch paymentMode {
   | "paymentMethodCollect" =>
-    <LoaderController paymentMode setIntegrateErrorError initTimestamp>
+    <LoaderController paymentMode setIntegrateErrorError>
       <PaymentMethodCollectElement integrateError />
     </LoaderController>
   | "paymentMethodsSDK" =>
-    <LoaderController paymentMode setIntegrateErrorError initTimestamp>
+    <LoaderController paymentMode setIntegrateErrorError>
       <PaymentMethodsSDK />
     </LoaderController>
   | "cardFormCoordinator" =>
-    <LoaderController paymentMode setIntegrateErrorError initTimestamp>
+    <LoaderController paymentMode setIntegrateErrorError>
       <CardFormCoordinator />
     </LoaderController>
   | _ =>
@@ -155,7 +154,7 @@ let make = () => {
     | "sepaBankTransfer" =>
       <BankTransfersPopup transferType=fullscreenMode />
     | _ =>
-      <LoaderController paymentMode setIntegrateErrorError initTimestamp>
+      <LoaderController paymentMode setIntegrateErrorError>
         <Payment paymentMode integrateError />
       </LoaderController>
     }

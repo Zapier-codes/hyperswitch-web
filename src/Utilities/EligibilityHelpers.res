@@ -179,6 +179,12 @@ let performEligibilityCheck = async (
           ~event=EligibilityCheckCancelled,
           ~details=[("check", check->JSON.Encode.string)],
         )
+      } else {
+        SdkLogger.logLifecycle(
+          ~event=EligibilityCheckFailed,
+          ~details=[("check", check->JSON.Encode.string)],
+          ~exn,
+        )
       }
       setEligibilityError->Option.forEach(setter => setter(_ => None))
       setIsEligibilityPending(_ => false)

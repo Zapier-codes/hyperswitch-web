@@ -98,27 +98,42 @@ let fetchCustomerSavedPaymentMethods = (
       ->Array.get(0),
     )
 
-    let getCustomerDefaultSavedPaymentMethodData = () => {
-      switch customerDefaultPaymentMethodRef.contents {
-      | Some(defaultPaymentMethod) => defaultPaymentMethod->Identity.anyTypeToJson
-      | None =>
-        handleFailureResponse(
-          ~message="There is no default saved payment method data for this customer.",
-          ~errorType="no_data",
-        )
-      }
-    }
+    let getCustomerDefaultSavedPaymentMethodData = () =>
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.PaymentSession(GetCustomerDefaultSavedPaymentMethodData),
+        ~details=[
+          ("found", customerDefaultPaymentMethodRef.contents->Option.isSome->JSON.Encode.bool),
+        ],
+        ~call=() =>
+          switch customerDefaultPaymentMethodRef.contents {
+          | Some(defaultPaymentMethod) => defaultPaymentMethod->Identity.anyTypeToJson
+          | None =>
+            handleFailureResponse(
+              ~message="There is no default saved payment method data for this customer.",
+              ~errorType="no_data",
+            )
+          },
+      )
 
-    let getCustomerLastUsedPaymentMethodData = () => {
-      switch customerPaymentMethodsRef.contents->Array.get(0) {
-      | Some(lastUsedPaymentMethod) => lastUsedPaymentMethod->Identity.anyTypeToJson
-      | None =>
-        handleFailureResponse(
-          ~message="No recent payments found for this customer.",
-          ~errorType="no_data",
-        )
-      }
-    }
+    let getCustomerLastUsedPaymentMethodData = () =>
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.PaymentSession(GetCustomerLastUsedPaymentMethodData),
+        ~details=[
+          (
+            "found",
+            (customerPaymentMethodsRef.contents->Array.get(0)->Option.isSome)->JSON.Encode.bool,
+          ),
+        ],
+        ~call=() =>
+          switch customerPaymentMethodsRef.contents->Array.get(0) {
+          | Some(lastUsedPaymentMethod) => lastUsedPaymentMethod->Identity.anyTypeToJson
+          | None =>
+            handleFailureResponse(
+              ~message="No recent payments found for this customer.",
+              ~errorType="no_data",
+            )
+          },
+      )
 
     let confirmWithCVCWidget = (
       ~body,
@@ -366,7 +381,7 @@ let fetchCustomerSavedPaymentMethods = (
         let paymentDataRequest = googlePayTokenRef.contents
 
         SdkLogger.observeFunction(
-          ~event=LoadPaymentSheet,
+          ~event=LoadPaymentData,
           ~paymentMethod=Wallet(GooglePay),
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() => client.loadPaymentData(paymentDataRequest),
@@ -374,7 +389,7 @@ let fetchCustomerSavedPaymentMethods = (
         ->then(json => {
           let metadata = json->Identity.anyTypeToJson
 
-          SdkLogger.logUser(
+          SdkLogger.logLifecycle(
             ~event=WalletTokenReceived,
             ~paymentMethod=Wallet(GooglePay),
           )

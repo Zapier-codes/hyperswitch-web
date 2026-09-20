@@ -441,10 +441,9 @@ let rec intentCall = (
           },
         )->then(resolve)
       })
-      ->catch(err => {
+      ->catch(_ => {
         Promise.make(
           (resolve, _) => {
-            let _ = err->formatException
             if counter >= 5 {
               if !isPaymentSession {
                 closePaymentLoaderIfAny()
@@ -943,7 +942,7 @@ let rec intentCall = (
       })
     }
   })
-  ->catch(err => {
+  ->catch(_ => {
     Promise.make((resolve, _) => {
       try {
         let url = makeUrl(confirmParam.return_url)
@@ -955,7 +954,6 @@ let rec intentCall = (
           Utils.getPaymentIdOrExtractFromSdkAuth(~clientSecret, ~sdkAuthorization),
         )
         url.searchParams.set("status", "failed")
-        let _ = err->formatException
         if counter >= 5 {
           if !isPaymentSession {
             closePaymentLoaderIfAny()
@@ -1415,7 +1413,7 @@ let fetchSessions = async (
   ~isDelayedSessionToken=false,
   ~customPodUri=?,
   ~endpoint,
-  ~isPaymentSession=false,
+  ~isPaymentSession as _=false,
   ~merchantHostname=Window.getRootHostName(),
   ~sdkAuthorization=None,
 ) => {
@@ -1466,7 +1464,6 @@ let fetchSessions = async (
     ~publishableKey=Some(publishableKey),
     ~onSuccess,
     ~onFailure,
-    ~isPaymentSession,
     ~sdkAuthorization,
   )
 }
@@ -1559,7 +1556,7 @@ let fetchClientList = async (
   ~publishableKey,
   ~customPodUri,
   ~endpoint,
-  ~isPaymentSession=false,
+  ~isPaymentSession as _=false,
   ~sdkAuthorization=None,
 ) => {
   let uri = APIUtils.generateApiUrlV1(
@@ -1586,7 +1583,6 @@ let fetchClientList = async (
     ~publishableKey=Some(publishableKey),
     ~onSuccess,
     ~onFailure,
-    ~isPaymentSession,
     ~sdkAuthorization,
   )
 }
@@ -2223,18 +2219,23 @@ let fetchSdkConfigs = async (
     },
   )
 
-  let onSuccess = data => data
-
-  let onFailure = _ => JSON.Encode.null
-
-  await fetchApiWithLogging(
-    uri,
+  let response = await SdkLogger.observeStaticAsset(
     ~event=SdkConfigs,
-    ~method=#GET,
-    ~customPodUri=Some(customPodUri),
-    ~publishableKey=Some(publishableKey),
-    ~onSuccess,
-    ~onFailure,
-    ~sdkAuthorization,
+    ~url=uri,
+    ~call=() =>
+      Utils.fetchApi(
+        uri,
+        ~method=#GET,
+        ~customPodUri=Some(customPodUri),
+        ~publishableKey=Some(publishableKey),
+        ~sdkAuthorization,
+      ),
   )
+
+  try {
+    let data = await response->Fetch.Response.json
+    response->Fetch.Response.ok ? data : JSON.Encode.null
+  } catch {
+  | _ => JSON.Encode.null
+  }
 }

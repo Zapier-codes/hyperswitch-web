@@ -28,14 +28,11 @@ let useHandlePostMessages = (
   ~savedMethod=false,
   ~enabled=true,
 ) => {
-  open JotaiAtoms
-
-  let {iframeId} = Jotai.useAtomValue(keys)
   let wasComplete = React.useRef(false)
 
   React.useEffect(() => {
     if enabled {
-      Utils.handlePostMessageEvents(~iframeId, ~complete, ~empty, ~paymentType)
+      Utils.handlePostMessageEvents(~complete, ~empty, ~paymentType)
     }
     None
   }, (complete, empty, paymentType, enabled))
@@ -48,7 +45,7 @@ let useHandlePostMessages = (
         sawIncomplete.current = true
       } else if !wasComplete.current && sawIncomplete.current {
         SdkLogger.logState(
-          ~event=PaymentFormCompletionChanged({savedMethod: savedMethod}),
+          ~event=PaymentFormCompleted({savedMethod: savedMethod}),
           ~paymentMethod=?paymentType->LoggerTaxonomy.fromBackendValue,
         )
       }

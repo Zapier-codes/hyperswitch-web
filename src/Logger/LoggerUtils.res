@@ -64,6 +64,12 @@ let deriveEvent = (value): eventSpec => {
   outcome: None,
 }
 
+let deriveFailure = (value): eventSpec => {
+  action: None,
+  subject: value->variantName,
+  outcome: Some(Failed),
+}
+
 let splitTrailingWord = constructor =>
   constructor
   ->String.match(/^([A-Z][A-Za-z0-9]*?)([A-Z][a-z0-9]*)$/)
@@ -109,7 +115,6 @@ let rec normalizeJson = json =>
 and normalizeValue = (key, value) =>
   switch (key, value->JSON.Decode.string) {
   | ("url" | "href" | "return_url", Some(text)) => text->sanitizeUrl->truncate->JSON.Encode.string
-
   | (_, Some(text)) if text->isVariantConstructor => text->screamingSnakeCase->JSON.Encode.string
   | _ => value->normalizeJson
   }
@@ -120,7 +125,7 @@ let normalizeDetails = (entries: details): details =>
     (key, normalizeValue(key, value))
   })
 
-let recordDetails = (event): details =>
+let eventDetails = (event): details =>
   switch event->Identity.anyTypeToJson->JSON.Decode.object {
   | None => []
   | Some(object) =>
@@ -191,9 +196,10 @@ let payloadFields = body =>
   | json => {
       let into = []
       json->collectFields(~prefix="", ~into)
-      let unique = into->Array.reduce([], (acc, path) =>
-        acc->Array.includes(path) ? acc : acc->Array.concat([path])
-      )
+      let unique =
+        into->Array.reduce([], (acc, path) =>
+          acc->Array.includes(path) ? acc : acc->Array.concat([path])
+        )
       unique->Array.length > maxPayloadFields
         ? unique->Array.slice(~start=0, ~end=maxPayloadFields)
         : unique
@@ -269,6 +275,17 @@ let summarizeErrorResponse = result =>
     }
   )
 
+let httpFailure = response =>
+  response->Fetch.Response.ok
+    ? None
+    : Some({
+        name: "HTTP_ERROR",
+        message: Some(response->Fetch.Response.status->Int.toString),
+        details: [],
+      })
+
+let httpDetails = response => [("status_code", response->Fetch.Response.status->JSON.Encode.int)]
+
 let intentErrorDetails = value =>
   switch value->Identity.anyTypeToJson->JSON.Decode.object {
   | None => []
@@ -296,7 +313,7 @@ let isAborted = summary => summary.name === "ABORT_ERROR"
 let outcomeDetails = operationOutcome =>
   switch operationOutcome {
   | OpStarted => []
-  | OpDone({durationMs}) | OpReused({durationMs}) => [
+  | OpDone({durationMs}) | OpReturned({durationMs}) | OpReused({durationMs}) => [
       ("duration_ms", durationMs->JSON.Encode.float),
     ]
   | OpFailed({durationMs, class, error}) =>

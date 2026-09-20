@@ -5,7 +5,6 @@ open Utils
 @react.component
 let make = (~paymentMethodName: string) => {
   let {iframeId, sdkAuthorization} = Jotai.useAtomValue(keys)
-
   let blikCode = Jotai.useAtomValue(userBlikCode)
   let phoneNumber = Jotai.useAtomValue(userPhoneNumber)
   let {themeObj} = Jotai.useAtomValue(configAtom)

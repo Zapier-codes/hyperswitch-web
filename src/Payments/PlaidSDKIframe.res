@@ -62,8 +62,7 @@ let make = () => {
         postSubmitResponse(~jsonData=json, ~url=return_url)
       | "failed" =>
         SdkLogger.logLifecycle(
-          ~event=BankAuthSyncFailed,
-          ~details=[("status", status->JSON.Encode.string)],
+          ~event=BankAuthSyncFailed({status: status}),
           ~paymentMethod=OpenBanking(Plaid),
         )
         postFailedSubmitResponse(
@@ -72,8 +71,7 @@ let make = () => {
         )
       | _ =>
         SdkLogger.logLifecycle(
-          ~event=BankAuthSyncFailed,
-          ~details=[("status", status->JSON.Encode.string)],
+          ~event=BankAuthSyncFailed({status: status}),
           ~paymentMethod=OpenBanking(Plaid),
         )
         postFailedSubmitResponse(
@@ -85,7 +83,7 @@ let make = () => {
     } catch {
     | exn =>
       SdkLogger.logLifecycle(
-        ~event=BankAuthSyncFailed,
+        ~event=BankAuthSyncFailed({status: "sync_exception"}),
         ~paymentMethod=OpenBanking(Plaid),
         ~exn,
       )
@@ -93,10 +91,21 @@ let make = () => {
   }
 
   let initializePlaid = () => {
+    let startedAt = Date.now()
+    SdkLogger.logFunction(
+      ~event=PlaidCreate,
+      ~outcome=Started,
+      ~paymentMethod=OpenBanking(Plaid),
+    )
     Plaid.create({
       token: linkToken,
       onLoad: _ =>
-        SdkLogger.logLifecycle(~event=BankAuthWidgetReady, ~paymentMethod=OpenBanking(Plaid)),
+        SdkLogger.logFunction(
+          ~event=PlaidCreate,
+          ~outcome=Done,
+          ~startedAt,
+          ~paymentMethod=OpenBanking(Plaid),
+        ),
       onSuccess: (publicToken, _) => {
         messageParentWindow([
           ("isPlaid", true->JSON.Encode.bool),

@@ -16,14 +16,6 @@ type paymentMethodConfig = {
   logoName: string,
 }
 
-let getKeyValue = (json, str) => {
-  json
-  ->Dict.get(str)
-  ->Option.getOr(Dict.make()->JSON.Encode.object)
-  ->JSON.Decode.string
-  ->Option.getOr("")
-}
-
 let parsePaymentMethod = methodString => {
   switch methodString {
   | "duit_now" => DuitNow
@@ -197,7 +189,7 @@ let make = () => {
   }, [expiryTime])
 
   let handleCopyQrData = _ => {
-  SdkLogger.logUser(~event=QrCodeCopyRequested)
+    SdkLogger.logUser(~event=QrCodeCopyRequested)
     messageParentWindow([
       ("copy", true->JSON.Encode.bool),
       ("copyDetails", rawQrData->JSON.Encode.string),

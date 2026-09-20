@@ -57,7 +57,7 @@ let make = () => {
     if confirm.doSubmit {
       if complete {
         let body = PaymentBody.boletoBody(
-          ~socialSecurityNumber=socialSecurityNumber->String.replaceRegExp(/\D+/g, ""),
+          ~socialSecurityNumber=socialSecurityNumber->cleanSocialSecurityNumber,
         )
         intent(
           ~bodyArr=body,

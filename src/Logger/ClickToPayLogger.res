@@ -1,19 +1,6 @@
 open LoggerTypes
 
-type provider =
-  | VisaUctp
-  | VisaDirect
-  | MastercardUctp
-  | MastercardDirect
-
-type providerFunction =
-  | Initialize
-  | IdentityLookup
-  | GetCards
-  | Authenticate
-  | EncryptCard
-  | Checkout
-  | UnbindAppInstance
+type provider = LoggerTaxonomy.clickToPayProvider
 
 type merchantMethod =
   | InitSession
@@ -36,55 +23,84 @@ type resourceEvent =
   | UiKitScript
   | UiKitStylesheet
 
-type cardsData = {visa: int, mastercard: int}
-type declineData = {code: string}
+type providerDetails = {provider: provider}
+type cardsData = {provider: provider, actionCode: string, visa: int, mastercard: int}
+type declineData = {provider: provider, code: string}
 
 type lifecycleEvent =
-  | ProviderReady
-  | ProviderUnavailable
-  | RecognitionTokenFound
+  | ProviderReady(providerDetails)
+  | ProviderUnavailable(providerDetails)
+  | RecognitionTokenFound(providerDetails)
   | CardsListed(cardsData)
   | CardsUnavailable(declineData)
-  | CustomerVerificationRequired
-  | CustomerRecognised
-  | CheckoutCompleted
+  | CustomerVerificationRequired(providerDetails)
+  | CustomerRecognised(providerDetails)
+  | CheckoutCompleted(providerDetails)
   | CheckoutDeclined(declineData)
-  | CheckoutFailed
-  | OtpRejected
-  | PopupBlocked
+  | CheckoutCancelled(declineData)
+  | CheckoutFailed(providerDetails)
+  | OtpRejected(providerDetails)
+  | PopupBlocked(providerDetails)
 
-let providerName = provider => provider->LoggerUtils.variantValue
+type functionEvent =
+  | Initialize(providerDetails)
+  | IdentityLookup(providerDetails)
+  | GetCards(providerDetails)
+  | Authenticate(providerDetails)
+  | EncryptCard(providerDetails)
+  | Checkout(providerDetails)
+  | UnbindAppInstance(providerDetails)
+  | SignOut(providerDetails)
 
-let lifecycleSeverity = value =>
-  switch value {
-  | ProviderReady
-  | RecognitionTokenFound
-  | CardsListed(_) => Debug
-  | CustomerVerificationRequired
-  | CustomerRecognised
-  | CheckoutCompleted
-  | CheckoutDeclined(_) => Info
-  | ProviderUnavailable
+let lifecycleSeverity = event =>
+  switch event {
+  | ProviderReady(_)
+  | RecognitionTokenFound(_)
+  | CheckoutCancelled(_)
+  | CardsListed(_) =>
+    Debug
+  | CustomerVerificationRequired(_)
+  | CustomerRecognised(_)
+  | CheckoutCompleted(_)
+  | CheckoutDeclined(_) =>
+    Info
+  | ProviderUnavailable(_)
   | CardsUnavailable(_)
-  | OtpRejected => Warning
-  | CheckoutFailed
-  | PopupBlocked => Error
+  | OtpRejected(_) =>
+    Warning
+  | CheckoutFailed(_)
+  | PopupBlocked(_) =>
+    Error
   }
 
-let functionSpec = (~provider: provider, ~function: providerFunction) =>
-  makeOperation(
-    call,
-    `${provider->LoggerUtils.variantName}_${function->LoggerUtils.variantName}`,
-  )
+let payloadProvider = event =>
+  switch event {
+  | Initialize({provider})
+  | IdentityLookup({provider})
+  | GetCards({provider})
+  | Authenticate({provider})
+  | EncryptCard({provider})
+  | Checkout({provider})
+  | UnbindAppInstance({provider})
+  | SignOut({provider}) => provider
+  }
 
-let functionSeverity = function =>
-  switch function {
-  | Initialize
-  | IdentityLookup
-  | GetCards
-  | Authenticate
-  | UnbindAppInstance => {success: Debug, failure: Warning}
-  | EncryptCard | Checkout => {success: Debug, failure: Error}
+let functionSpec = event => {
+  let subject = `${event
+    ->payloadProvider
+    ->LoggerUtils.variantName}_${event->LoggerUtils.variantName}`
+  makeOperation(call, subject)
+}
+
+let functionSeverity = event =>
+  switch event {
+  | Initialize(_)
+  | IdentityLookup(_)
+  | GetCards(_)
+  | Authenticate(_)
+  | UnbindAppInstance(_)
+  | SignOut(_) => {success: Debug, failure: Warning}
+  | EncryptCard(_) | Checkout(_) => {success: Debug, failure: Error}
   }
 
 let merchantCallSpec = method => makeOperation(call, method->LoggerUtils.variantName)
@@ -115,34 +131,25 @@ let resourceKind = (value): ResourceLoader.resource =>
   | VisaSdkScript | MastercardSdkScript | UiKitScript => Script
   }
 
-let providerDetails = provider => [("provider", provider->providerName->JSON.Encode.string)]
-
 let paymentMethod = LoggerTaxonomy.Card(Unspecified)
 
-let logLifecycle = (~event: lifecycleEvent, ~provider: option<provider>=?, ~details=[], ~exn=?) =>
+let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
     ~spec=event->LoggerUtils.deriveEvent,
     ~severity=event->lifecycleSeverity,
-    ~data=event->LoggerUtils.recordDetails,
-    ~details=provider->Option.map(providerDetails)->Option.getOr([])->Array.concat(details),
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
     ~exn?,
     ~paymentMethod,
   )
 
-let observeFunction = (
-  ~provider: provider,
-  ~function: providerFunction,
-  ~details=[],
-  ~timeoutMs=?,
-  ~detailsOf=?,
-  ~call,
-) =>
+let observeFunction = (~event: functionEvent, ~details=[], ~timeoutMs=?, ~detailsOf=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Function,
-    ~spec=functionSpec(~provider, ~function),
-    ~severity=function->functionSeverity,
-    ~data=provider->providerDetails,
+    ~spec=event->functionSpec,
+    ~severity=event->functionSeverity,
+    ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
     ~failureOf=LoggerUtils.summarizeErrorResponse,
@@ -162,6 +169,7 @@ let observeMerchantCall = (
     ~category=Merchant,
     ~spec=method->merchantCallSpec,
     ~severity=method->merchantCallSeverity,
+    ~data=method->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
     ~failureOf=LoggerUtils.summarizeErrorResponse,
@@ -170,29 +178,19 @@ let observeMerchantCall = (
     ~call,
   )
 
-let logMerchantCall = (~method: merchantMethod, ~details=[], ~call) =>
-  LoggerRuntime.observeSync(
-    ~category=Merchant,
-    ~spec=method->merchantCallSpec,
-    ~severity=method->merchantCallSeverity,
-    ~details,
-    ~paymentMethod,
-    ~call,
-  )
-
 let observeApi = (
   ~event: apiEvent,
   ~url,
   ~details=[],
-  ~failureOf=SdkLogger.httpFailure,
-  ~detailsOf=SdkLogger.httpDetails,
+  ~failureOf=LoggerUtils.httpFailure,
+  ~detailsOf=LoggerUtils.httpDetails,
   ~call,
 ) =>
   LoggerRuntime.observe(
     ~category=Api,
     ~spec=event->apiSpec,
     ~severity=apiSeverity,
-    ~data=[("url", url->JSON.Encode.string)],
+    ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
     ~failureOf,
     ~detailsOf,

@@ -53,82 +53,6 @@ let eventName = (~category, ~action, ~subject, ~outcome) => {
   ->Array.join(".")
 }
 
-let emitRow = (
-  ~category,
-  ~severity,
-  ~action: option<action>=?,
-  ~subject: string,
-  ~outcome,
-  ~details: details,
-  ~durationMs: option<float>,
-  ~paymentMethod: option<LoggerTaxonomy.paymentMethod>,
-  ~context: LoggerContext.t,
-) =>
-  if severity->isEnabled {
-    let name = eventName(~category, ~action, ~subject, ~outcome)
-    let limit = GlobalVars.maxLogsPushedPerEventName
-    let seen = emitCounts.contents->Dict.get(name)->Option.getOr(0)
-
-    if seen <= limit {
-      emitCounts.contents->Dict.set(name, seen + 1)
-      let paymentMethod = switch paymentMethod {
-      | Some(_) as paymentMethod => paymentMethod
-      | None => context.paymentMethod
-      }
-      let dropped = LoggerQueue.takeDroppedRows()
-      let details =
-        details
-        ->LoggerUtils.normalizeDetails
-        ->Array.concat(dropped > 0 ? [("dropped_rows", dropped->JSON.Encode.int)] : [])
-        ->Array.concat(seen === limit ? [("rate_limited", true->JSON.Encode.bool)] : [])
-        ->LoggerUtils.fitToBudget
-
-      let value =
-        [
-          ("schema_version", schemaVersion->JSON.Encode.int),
-          ("profile_id", context.profileId->JSON.Encode.string),
-          ("authentication_id", context.authenticationId->JSON.Encode.string),
-          ("href", Window.hrefWithoutSearch->JSON.Encode.string),
-          ("occurrence", (seen + 1)->JSON.Encode.int),
-          ("details", details->Dict.fromArray->JSON.Encode.object),
-        ]
-        ->Dict.fromArray
-        ->JSON.Encode.object
-        ->JSON.stringify
-
-      let row =
-        [
-          ("timestamp", Date.now()->Float.toString),
-          ("log_type", severity->severityName),
-          ("component", "WEB"),
-          ("category", category->categoryName),
-          ("source", currentSource.contents),
-          ("version", GlobalVars.repoVersion),
-          ("value", value),
-          ("session_id", context.sessionId),
-          ("merchant_id", context.merchantId),
-          ("payment_id", context.paymentId),
-          ("app_id", ""),
-          ("platform", Window.Navigator.platform->LoggerUtils.screamingSnakeCase),
-          ("user_agent", Window.Navigator.userAgent),
-          ("event_name", name),
-          ("browser_name", browser.name->Option.getOr("Others")->LoggerUtils.screamingSnakeCase),
-          ("browser_version", browser.version->Option.getOr("0")),
-          ("latency", durationMs->Option.map(value => value->Float.toString)->Option.getOr("")),
-          ("first_event", (seen === 0)->LoggerUtils.stringOfBool),
-          (
-            "payment_method",
-            paymentMethod->Option.map(LoggerTaxonomy.qualifiedName)->Option.getOr(""),
-          ),
-        ]
-        ->Array.map(((key, value)) => (key, value->JSON.Encode.string))
-        ->Dict.fromArray
-        ->JSON.Encode.object
-
-      LoggerQueue.push(row, ~isError=severity === Error)
-    }
-  }
-
 let emit = (
   ~category,
   ~spec: eventSpec,
@@ -138,43 +62,89 @@ let emit = (
   ~exn: option<exn>=?,
   ~failure: option<'response>=?,
   ~durationMs: option<float>=?,
-  ~paymentMethod=?,
+  ~paymentMethod: option<LoggerTaxonomy.paymentMethod>=?,
+  ~context: option<LoggerContext.t>=?,
 ) =>
-  LoggerUtils.safeRun(() => {
-    let errorDetails =
-      switch exn {
-      | Some(exn) => Some(exn->LoggerUtils.summarizeExn)
-      | None => failure->Option.flatMap(LoggerUtils.summarizeErrorResponse)
-      }
-      ->Option.map(LoggerUtils.errorDetails)
-      ->Option.getOr([])
-    emitRow(
-      ~category,
-      ~severity,
-      ~action=?spec.action,
-      ~subject=spec.subject,
-      ~outcome=spec.outcome,
-      ~details=LoggerUtils.mergeDetails(~data, ~details)->Array.concat(errorDetails),
-      ~durationMs,
-      ~paymentMethod,
-      ~context=LoggerContext.current(),
-    )
-  })
+  if severity->isEnabled {
+    LoggerUtils.safeRun(() => {
+      let context = context->Option.getOr(LoggerContext.current())
+      let name = eventName(
+        ~category,
+        ~action=spec.action,
+        ~subject=spec.subject,
+        ~outcome=spec.outcome,
+      )
+      let limit = GlobalVars.maxLogsPushedPerEventName
+      let seen = emitCounts.contents->Dict.get(name)->Option.getOr(0)
 
-let record = (~category, ~spec: operationSpec, ~severity: severity, ~details: details=[]) =>
-  LoggerUtils.safeRun(() =>
-    emitRow(
-      ~category,
-      ~severity,
-      ~action=spec.action,
-      ~subject=spec.subject,
-      ~outcome=None,
-      ~details,
-      ~durationMs=None,
-      ~paymentMethod=None,
-      ~context=LoggerContext.current(),
-    )
-  )
+      if seen <= limit {
+        emitCounts.contents->Dict.set(name, seen + 1)
+        let paymentMethod = switch paymentMethod {
+        | Some(_) as paymentMethod => paymentMethod
+        | None => context.paymentMethod
+        }
+        let errorDetails =
+          switch exn {
+          | Some(exn) => Some(exn->LoggerUtils.summarizeExn)
+          | None => failure->Option.flatMap(LoggerUtils.summarizeErrorResponse)
+          }
+          ->Option.map(LoggerUtils.errorDetails)
+          ->Option.getOr([])
+        let dropped = LoggerQueue.takeDroppedRows()
+        let details =
+          LoggerUtils.mergeDetails(~data, ~details)
+          ->Array.concat(errorDetails)
+          ->LoggerUtils.normalizeDetails
+          ->Array.concat(dropped > 0 ? [("dropped_rows", dropped->JSON.Encode.int)] : [])
+          ->Array.concat(seen === limit ? [("rate_limited", true->JSON.Encode.bool)] : [])
+          ->LoggerUtils.fitToBudget
+
+        let value =
+          [
+            ("schema_version", schemaVersion->JSON.Encode.int),
+            ("profile_id", context.profileId->JSON.Encode.string),
+            ("authentication_id", context.authenticationId->JSON.Encode.string),
+            ("href", Window.hrefWithoutSearch->JSON.Encode.string),
+            ("occurrence", (seen + 1)->JSON.Encode.int),
+            ("details", details->Dict.fromArray->JSON.Encode.object),
+          ]
+          ->Dict.fromArray
+          ->JSON.Encode.object
+          ->JSON.stringify
+
+        let row =
+          [
+            ("timestamp", Date.now()->Float.toString),
+            ("log_type", severity->severityName),
+            ("component", "WEB"),
+            ("category", category->categoryName),
+            ("source", currentSource.contents),
+            ("version", GlobalVars.repoVersion),
+            ("value", value),
+            ("session_id", context.sessionId),
+            ("merchant_id", context.merchantId),
+            ("payment_id", context.paymentId),
+            ("app_id", ""),
+            ("platform", Window.Navigator.platform->LoggerUtils.screamingSnakeCase),
+            ("user_agent", Window.Navigator.userAgent),
+            ("event_name", name),
+            ("browser_name", browser.name->Option.getOr("Others")->LoggerUtils.screamingSnakeCase),
+            ("browser_version", browser.version->Option.getOr("0")),
+            ("latency", durationMs->Option.map(value => value->Float.toString)->Option.getOr("")),
+            ("first_event", (seen === 0)->LoggerUtils.stringOfBool),
+            (
+              "payment_method",
+              paymentMethod->Option.map(LoggerTaxonomy.qualifiedName)->Option.getOr(""),
+            ),
+          ]
+          ->Array.map(((key, value)) => (key, value->JSON.Encode.string))
+          ->Dict.fromArray
+          ->JSON.Encode.object
+
+        LoggerQueue.push(row, ~isError=severity === Error)
+      }
+    })
+  }
 
 let defaultTimeoutMs = 30000
 
@@ -203,59 +173,61 @@ let settle = tracker =>
     true
   }
 
-let recordOutcome = (
+let emitOutcome = (
   ~category,
   ~spec: operationSpec,
   ~severity: operationSeverity,
-  ~details: details,
-  ~extra: details=[],
-  ~paymentMethod,
-  ~context,
+  ~data: details=[],
+  ~details: details=[],
+  ~paymentMethod=?,
+  ~context=?,
   operationOutcome,
 ) =>
-  LoggerUtils.safeRun(() =>
-    emitRow(
-      ~category,
-      ~severity=operationOutcome->LoggerUtils.outcomeSeverity(~severity),
-      ~action=spec.action,
-      ~subject=spec.subject,
-      ~outcome=Some(operationOutcome->outcomeOf),
-      ~details=details
-      ->Array.concat(operationOutcome->LoggerUtils.outcomeDetails)
-      ->Array.concat(extra),
-      ~durationMs=operationOutcome->durationOf,
-      ~paymentMethod,
-      ~context,
-    )
+  emit(
+    ~category,
+    ~spec=spec->toEventSpec(~outcome=operationOutcome->outcomeOf),
+    ~severity=operationOutcome->LoggerUtils.outcomeSeverity(~severity),
+    ~data=data->Array.concat(operationOutcome->LoggerUtils.outcomeDetails),
+    ~details,
+    ~durationMs=?operationOutcome->durationOf,
+    ~paymentMethod?,
+    ~context?,
   )
 
-let recordPhase = (
+let emitPhase = (
   ~category,
   ~spec: operationSpec,
   ~severity: operationSeverity,
   ~outcome: outcome,
+  ~data=[],
   ~details=[],
   ~startedAt=?,
-  ~error=?,
+  ~exn=?,
   ~paymentMethod=?,
 ) => {
   let durationMs = startedAt->Option.map(startedAt => Date.now() -. startedAt)->Option.getOr(0.)
   let operationOutcome = switch outcome {
   | Started => OpStarted
   | Done => OpDone({durationMs: durationMs})
+  | Returned => OpReturned({durationMs: durationMs})
   | Reused => OpReused({durationMs: durationMs})
-  | TimedOut => OpTimedOut({durationMs: durationMs, timeoutMs: 0})
-  | Failed => OpFailed({durationMs: durationMs, class: ReturnedFailure, error: error})
+  | TimedOut => OpTimedOut({durationMs, timeoutMs: 0})
+  | Failed =>
+    OpFailed({
+      durationMs,
+      class: ReturnedFailure,
+      error: exn->Option.map(LoggerUtils.summarizeValue),
+    })
   }
-  operationOutcome->recordOutcome(
-    ~category,
-    ~spec,
-    ~severity,
-    ~details,
-    ~paymentMethod,
-    ~context=LoggerContext.current(),
-  )
+  operationOutcome->emitOutcome(~category, ~spec, ~severity, ~data, ~details, ~paymentMethod?)
 }
+
+let isThenable: 'value => bool = %raw(`
+  (value) => value != null && typeof value.then === "function"
+`)
+
+external asPromise: 'value => promise<'result> = "%identity"
+external asResult: 'value => 'result = "%identity"
 
 let observe = (
   ~category,
@@ -267,38 +239,28 @@ let observe = (
   ~failureOf: option<'result => option<errorSummary>>=?,
   ~detailsOf: option<'result => details>=?,
   ~paymentMethod=?,
-  ~call,
-) => {
+  ~call: unit => 'value,
+): 'value => {
   let context = LoggerContext.current()
   let base = LoggerUtils.mergeDetails(~data, ~details)
   let tracker = {startedAt: Date.now(), settled: false, timer: None}
   let timedOut = ref(false)
 
-  let record = (operationOutcome, ~details=[]) =>
-    operationOutcome->recordOutcome(
+  let emitStep = (operationOutcome, ~details=[]) =>
+    operationOutcome->emitOutcome(
       ~category,
       ~spec,
       ~severity,
-      ~details=base,
-      ~extra=details->Array.concat(
+      ~data=base,
+      ~details=details->Array.concat(
         timedOut.contents ? [("settled_after_timeout", true->JSON.Encode.bool)] : [],
       ),
-      ~paymentMethod,
+      ~paymentMethod?,
       ~context,
     )
 
   let failed = (~class, ~error) =>
-    record(OpFailed({durationMs: tracker->elapsed, class, error: Some(error)}))
-
-  record(OpStarted)
-  tracker.timer = Some(setTimeout(() =>
-      if !tracker.settled {
-        tracker.settled = true
-        tracker.timer = None
-        timedOut := true
-        record(OpTimedOut({durationMs: tracker->elapsed, timeoutMs}))
-      }
-    , timeoutMs))
+    emitStep(OpFailed({durationMs: tracker->elapsed, class, error: Some(error)}))
 
   let classify = result =>
     try failureOf->Option.flatMap(failureOf => failureOf(result)) catch {
@@ -310,62 +272,48 @@ let observe = (
     | _ => []
     }
 
+  let finish = (result, ~outcome) =>
+    switch result->classify {
+    | Some(error) => failed(~class=ReturnedFailure, ~error)
+    | None => emitStep(outcome({durationMs: tracker->elapsed}), ~details=result->describe)
+    }
+
   try {
-    let promise = call()
-    promise
-    ->Promise.thenResolve(result =>
-      if tracker->settle || timedOut.contents {
-        switch result->classify {
-        | Some(error) => failed(~class=ReturnedFailure, ~error)
-        | None => record(OpDone({durationMs: tracker->elapsed}), ~details=result->describe)
+    let value = call()
+    if value->isThenable {
+      emitStep(OpStarted)
+      tracker.timer = Some(setTimeout(() =>
+          if !tracker.settled {
+            tracker.settled = true
+            tracker.timer = None
+            timedOut := true
+            emitStep(OpTimedOut({durationMs: tracker->elapsed, timeoutMs}))
+          }
+        , timeoutMs))
+      value
+      ->asPromise
+      ->Promise.thenResolve(result =>
+        if tracker->settle || timedOut.contents {
+          result->finish(~outcome=timing => OpDone(timing))
         }
-      }
-    )
-    ->Promise.catch(error => {
-      if tracker->settle || timedOut.contents {
-        let error = error->LoggerUtils.summarizeExn
-        failed(~class=error->LoggerUtils.isAborted ? Aborted : Rejected, ~error)
-      }
-      Promise.resolve()
-    })
-    ->ignore
-    promise
+      )
+      ->Promise.catch(error => {
+        if tracker->settle || timedOut.contents {
+          let error = error->LoggerUtils.summarizeExn
+          failed(~class=error->LoggerUtils.isAborted ? Aborted : Rejected, ~error)
+        }
+        Promise.resolve()
+      })
+      ->ignore
+    } else if tracker->settle {
+      value->asResult->finish(~outcome=timing => OpReturned(timing))
+    }
+    value
   } catch {
   | error => {
       if tracker->settle {
         failed(~class=Threw, ~error=error->LoggerUtils.summarizeExn)
       }
-      raise(error)
-    }
-  }
-}
-
-let observeSync = (
-  ~category,
-  ~spec: operationSpec,
-  ~severity: operationSeverity,
-  ~details=[],
-  ~paymentMethod=?,
-  ~call,
-) => {
-  let context = LoggerContext.current()
-  let startedAt = Date.now()
-  let elapsed = () => Date.now() -. startedAt
-  let record = operationOutcome =>
-    operationOutcome->recordOutcome(~category, ~spec, ~severity, ~details, ~paymentMethod, ~context)
-  try {
-    let result = call()
-    record(OpDone({durationMs: elapsed()}))
-    result
-  } catch {
-  | error => {
-      record(
-        OpFailed({
-          durationMs: elapsed(),
-          class: Threw,
-          error: Some(error->LoggerUtils.summarizeExn),
-        }),
-      )
       raise(error)
     }
   }
@@ -395,18 +343,18 @@ let observeResource = (
     ("deduped", dedupe->JSON.Encode.bool),
   ]
 
-  let record = operationOutcome =>
-    operationOutcome->recordOutcome(
+  let emitStep = operationOutcome =>
+    operationOutcome->emitOutcome(
       ~category=Resource,
       ~spec,
       ~severity,
-      ~details=base,
-      ~paymentMethod,
+      ~data=base,
+      ~paymentMethod?,
       ~context,
     )
 
   let failed = (~class, ~error) =>
-    record(
+    emitStep(
       OpFailed({
         durationMs: tracker->elapsed,
         class,
@@ -418,13 +366,13 @@ let observeResource = (
   let start = () =>
     if !started.contents {
       started := true
-      record(OpStarted)
+      emitStep(OpStarted)
     }
 
   tracker.timer = Some(setTimeout(() =>
       if tracker->settle && !abandoned() {
         start()
-        record(OpTimedOut({durationMs: tracker->elapsed, timeoutMs}))
+        emitStep(OpTimedOut({durationMs: tracker->elapsed, timeoutMs}))
       }
     , timeoutMs))
 
@@ -432,10 +380,10 @@ let observeResource = (
     if tracker->settle {
       let timing = {durationMs: tracker->elapsed}
       switch result {
-      | Reused => record(OpReused(timing))
+      | Reused => emitStep(OpReused(timing))
       | Loaded => {
           start()
-          record(OpDone(timing))
+          emitStep(OpDone(timing))
         }
       }
     }

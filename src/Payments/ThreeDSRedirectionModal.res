@@ -11,19 +11,15 @@ let make = () => {
   let eventsToSendToParent = ["openurl_if_required"]
   eventsToSendToParent->UtilityHooks.useSendEventsToParent
 
-  let handleOnClose = () =>
+  let handleOnClose = () => {
+    SdkLogger.logUser(
+      ~event=ThreeDsPopupDismissed,
+      ~details=[("redirect_url_received", (redirectResponseUrl != "")->JSON.Encode.bool)],
+    )
     if redirectResponseUrl == "" {
-      SdkLogger.logUser(
-        ~event=ThreeDsPopupDismissed,
-        ~details=[("redirect_url_received", false->JSON.Encode.bool)],
-      )
       messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
       postFailedSubmitResponse(~errortype="error", ~message="Something went wrong.")
     } else {
-      SdkLogger.logUser(
-        ~event=ThreeDsPopupDismissed,
-        ~details=[("redirect_url_received", true->JSON.Encode.bool)],
-      )
       let customEvent =
         {
           openurl_if_required: redirectResponseUrl,
@@ -32,6 +28,7 @@ let make = () => {
         ->getDictFromJson
       messageParentWindow(customEvent->Dict.toArray)
     }
+  }
 
   React.useEffect0(() => {
     messageParentWindow([("iframeMountedCallback", true->JSON.Encode.bool)])
