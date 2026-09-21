@@ -573,6 +573,18 @@ let isSdkFrame = source =>
   | source => sdkOrigins->Array.some(origin => source->String.includes(origin))
   }
 
+let adoptSessionFromParent = (~paymentType) => {
+  LoggerRuntime.configure(~source=Elements(paymentType))
+  Window.addEventListener("message", (ev: Window.event) => {
+    let message = try JSON.parseExn(ev.data) catch {
+    | _ => JSON.Encode.null
+    }
+    message
+    ->JSON.Decode.object
+    ->Option.forEach(LoggerContext.startSessionFromMessage)
+  })
+}
+
 let catchGlobalCrashes = (~ownsDocument) => {
   let reporting = ref(false)
   let report = (~origin, ~details) =>
@@ -633,6 +645,7 @@ let observeApi = (
   ~timeoutMs=?,
   ~failureOf=LoggerUtils.httpFailure,
   ~detailsOf=LoggerUtils.httpDetails,
+  ~paymentMethod=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -644,6 +657,7 @@ let observeApi = (
     ~timeoutMs?,
     ~failureOf,
     ~detailsOf,
+    ~paymentMethod?,
     ~call,
   )
 
@@ -654,6 +668,7 @@ let observeStaticAsset = (
   ~timeoutMs=?,
   ~failureOf=LoggerUtils.httpFailure,
   ~detailsOf=LoggerUtils.httpDetails,
+  ~paymentMethod=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -670,6 +685,7 @@ let observeStaticAsset = (
     ~timeoutMs?,
     ~failureOf,
     ~detailsOf,
+    ~paymentMethod?,
     ~call,
   )
 

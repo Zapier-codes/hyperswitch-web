@@ -105,6 +105,7 @@ let make = (
                       field: "click_to_pay_save_details",
                       enabled: e->getIsChecked,
                     }),
+                    ~paymentMethod=Card(Unspecified),
                   )
                   setIsSaveDetailsWithClickToPay(_ => e->getIsChecked)
                 }}
@@ -145,6 +146,7 @@ let make = (
                       field: "click_to_pay_remember_me_checkbox",
                       enabled: e->getIsChecked,
                     }),
+                    ~paymentMethod=Card(Unspecified),
                   )
                   setIsClickToPayRememberMe(_ => e->getIsChecked)
                 }}

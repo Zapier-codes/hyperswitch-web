@@ -129,7 +129,7 @@ let describeJson = (value: JSON.t): string =>
   | None => value->stringifyNullable->Nullable.toOption->getNonEmptyOption->Option.getOr("null")
   }
 
-let emitBrokerError = (
+let notifyBrokerError = (
   ~eventCallbacksRef: ref<Dict.t<JSON.t => unit>>,
   ~reason: SdkLogger.vaultFailure,
   ~code: string,
@@ -467,29 +467,41 @@ let make = (
               clearDependentFieldsOnEmptiedCardNumber()
             }
             let startedAt = Date.now()
-            let recordFormCreate = (~outcome, ~startedAt=?, ~exn=?) =>
-              SdkLogger.logFunction(
-                ~event=VaultFormCreate,
-                ~outcome,
-                ~startedAt?,
-                ~exn?,
-                ~paymentMethod=Card(Unspecified),
-              )
-            recordFormCreate(~outcome=Started)
+            SdkLogger.logFunction(
+              ~event=VaultFormCreate,
+              ~outcome=Started,
+              ~paymentMethod=Card(Unspecified),
+            )
             let form: JSON.t = switch vgsCollect->Nullable.toOption {
             | Some(collect) =>
               try collect.create(vaultId, environment, onFormStateChange) catch {
               | err => {
-                  recordFormCreate(~outcome=Failed, ~startedAt, ~exn=err->Identity.anyTypeToJson)
+                  SdkLogger.logFunction(
+                    ~event=VaultFormCreate,
+                    ~outcome=Failed,
+                    ~startedAt,
+                    ~exn=err->Identity.anyTypeToJson,
+                    ~paymentMethod=Card(Unspecified),
+                  )
                   Error.raise(Error.make("VGSCollect create failed"))
                 }
               }
             | None =>
-              recordFormCreate(~outcome=Failed, ~startedAt)
+              SdkLogger.logFunction(
+                ~event=VaultFormCreate,
+                ~outcome=Failed,
+                ~startedAt,
+                ~paymentMethod=Card(Unspecified),
+              )
               Error.raise(Error.make("VGSCollect script failed to register window.VGSCollect"))
             }
             formRef := Some(form)
-            recordFormCreate(~outcome=Done, ~startedAt)
+            SdkLogger.logFunction(
+              ~event=VaultFormCreate,
+              ~outcome=Done,
+              ~startedAt,
+              ~paymentMethod=Card(Unspecified),
+            )
             Promise.resolve(form)
           })
           ->Promise.catch(err => {
@@ -554,7 +566,7 @@ let make = (
           let settled = ref(false)
 
           let event = SdkLogger.VaultTokenization({scope: FullCard})
-          let record = (~outcome, ~details=[], ~exn=?) =>
+          let logOutcomeOnce = (~outcome, ~details=[], ~exn=?) =>
             if !settled.contents {
               settled := true
               SdkLogger.logApi(
@@ -575,7 +587,7 @@ let make = (
           )
 
           let settleWithFailure = (message: string) => {
-            record(~outcome=Failed, ~exn=message->JSON.Encode.string)
+            logOutcomeOnce(~outcome=Failed, ~exn=message->JSON.Encode.string)
             resolve(
               makeErrorEnvelope(~code="tokenization_failed", ~message, ~errorType="api_error"),
             )
@@ -584,7 +596,10 @@ let make = (
           let onSuccess: (JSON.t, JSON.t) => unit = (status, data) => {
             switch (status->httpStatusCode, data->JSON.Decode.object) {
             | (Some(code), Some(vaultResponse)) if code >= 200. && code < 300. =>
-              record(~outcome=Done, ~details=[("status_code", code->Float.toInt->JSON.Encode.int)])
+              logOutcomeOnce(
+                ~outcome=Done,
+                ~details=[("status_code", code->Float.toInt->JSON.Encode.int)],
+              )
               let resultDict = Dict.make()
               resultDict->Dict.set("status", "success"->JSON.Encode.string)
               resultDict->Dict.set("vaultResponse", vaultResponse->JSON.Encode.object)
@@ -743,7 +758,7 @@ let make = (
           | exn =>
             let message = `field.on("${event}") could not be wired for fieldId=${fieldId} — ${event} events will never fire: ${exn->exceptionMessage}`
             Console.error2(`[VGSVaultBroker] ${message}`, exn->Identity.anyTypeToJson)
-            emitBrokerError(
+            notifyBrokerError(
               ~eventCallbacksRef,
               ~reason=FieldBindingFailed,
               ~code="vgs_field_event_binding_failed",
@@ -764,7 +779,7 @@ let make = (
     ->Promise.catch(err => {
       let message = `mountField(${fieldType}, ${selector}) failed: ${err->exceptionMessage}`
       Console.error2(`[VGSVaultBroker] ${message}`, err->Identity.anyTypeToJson)
-      emitBrokerError(
+      notifyBrokerError(
         ~eventCallbacksRef,
         ~reason=FieldMountFailed,
         ~code=err->exceptionCodeOr(~fallback="vgs_mount_failed"),
@@ -787,7 +802,7 @@ let make = (
       | exn =>
         let message = `updateField(${fieldId}) threw — the requested options were not applied: ${exn->exceptionMessage}`
         Console.error2(`[VGSVaultBroker] ${message}`, exn->Identity.anyTypeToJson)
-        emitBrokerError(
+        notifyBrokerError(
           ~eventCallbacksRef,
           ~reason=FieldUpdateFailed,
           ~code="vgs_field_update_failed",
@@ -821,7 +836,7 @@ let make = (
       | exn =>
         let message = `unmountField(${fieldId}) threw — the secure field may still be in the DOM: ${exn->exceptionMessage}`
         Console.error2(`[VGSVaultBroker] ${message}`, exn->Identity.anyTypeToJson)
-        emitBrokerError(
+        notifyBrokerError(
           ~eventCallbacksRef,
           ~reason=FieldUnmountFailed,
           ~code="vgs_field_unmount_failed",

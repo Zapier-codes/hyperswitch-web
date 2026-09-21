@@ -3,11 +3,18 @@ module CoBadgeCardSchemeDropDown = {
   let make = (~eligibleCardSchemes, ~setCardBrand) => {
     <select
       className="w-4"
-      onClick={_ => SdkLogger.logUser(~event=ViewOpened({view: CardSchemeMenu}))}
+      onClick={_ =>
+        SdkLogger.logUser(
+          ~event=ViewOpened({view: CardSchemeMenu}),
+          ~paymentMethod=Card(Unspecified),
+        )}
       onChange={ev => {
         let target = ev->ReactEvent.Form.target
         let value = target["value"]
-        SdkLogger.logUser(~event=CardSchemeSelected({method: value}))
+        SdkLogger.logUser(
+          ~event=CardSchemeSelected({method: value}),
+          ~paymentMethod=Card(Unspecified),
+        )
         setCardBrand(_ => value)
       }}
     >

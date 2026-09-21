@@ -63,6 +63,7 @@ let make = () => {
     getPaymentMethodConfig(Other)
   )
   let copyTimeoutRef = React.useRef(None)
+  let loggedPaymentMethodRef = React.useRef(None)
 
   React.useEffect0(() => {
     messageParentWindow([("iframeMountedCallback", true->JSON.Encode.bool)])
@@ -75,6 +76,7 @@ let make = () => {
           let metaDataDict = metadata->JSON.Decode.object->Option.getOr(Dict.make())
 
           let paymentMethodStr = metaDataDict->getString("paymentMethod", "")
+          loggedPaymentMethodRef.current = paymentMethodStr->LoggerTaxonomy.fromBackendValue
           let parsedPaymentMethod = parsePaymentMethod(paymentMethodStr)
 
           let defaultConfig = getPaymentMethodConfig(parsedPaymentMethod)
@@ -189,7 +191,7 @@ let make = () => {
   }, [expiryTime])
 
   let handleCopyQrData = _ => {
-    SdkLogger.logUser(~event=QrCodeCopyRequested)
+    SdkLogger.logUser(~event=QrCodeCopyRequested, ~paymentMethod=?loggedPaymentMethodRef.current)
     messageParentWindow([
       ("copy", true->JSON.Encode.bool),
       ("copyDetails", rawQrData->JSON.Encode.string),

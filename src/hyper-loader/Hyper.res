@@ -215,9 +215,12 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       HyperLoaderLogger.logMerchantProps(
         ~event=HyperLoaderLogger.HyperProp(RedirectionFlags),
         ~details=[
-          ("shouldUseTopRedirection", redirectionFlags.shouldUseTopRedirection->JSON.Encode.bool),
           (
-            "shouldRemoveBeforeUnloadEvents",
+            "should_use_top_redirection",
+            redirectionFlags.shouldUseTopRedirection->JSON.Encode.bool,
+          ),
+          (
+            "should_remove_before_unload_events",
             redirectionFlags.shouldRemoveBeforeUnloadEvents->JSON.Encode.bool,
           ),
         ],
@@ -311,7 +314,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       let clientListDataPromise = ref(emptyJsonPromise)
 
       let retrievePaymentIntentApiCall = async clientSecretOrSdkAuth => {
-
         let (actualClientSecret, sdkAuthorizationValue) = try {
           clientSecretOrSdkAuth->Utils.getSdkAuthorizationData->ignore
 
@@ -402,7 +404,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
                   if isOneClick {
                     iframeRef.contents->Array.forEach(
                       ifR => {
-
                         ifR->Window.iframePostMessage(
                           [("oneClickDoSubmit", false->JSON.Encode.bool)]->Dict.fromArray,
                         )
@@ -451,23 +452,26 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         }
       }
 
-      let observeGatedConfirm = (event, payload) =>
-        HyperLoaderLogger.observeMerchantCall(
-          ~event,
-          ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
-          ~call=() =>
-            if isUpdateIntentInProgress.contents {
-              Promise.resolve(UpdateIntentHelpersNew.confirmBlockedResponse())
-            } else {
-              confirmPaymentWrapper(payload, false, true)
-            },
-        )
+      let gatedConfirmCall = payload =>
+        if isUpdateIntentInProgress.contents {
+          Promise.resolve(UpdateIntentHelpersNew.confirmBlockedResponse())
+        } else {
+          confirmPaymentWrapper(payload, false, true)
+        }
 
       let confirmPayment = payload =>
-        observeGatedConfirm(HyperLoaderLogger.Hyper(ConfirmPayment), payload)
+        HyperLoaderLogger.observeMerchantCall(
+          ~event=HyperLoaderLogger.Hyper(ConfirmPayment),
+          ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
+          ~call=() => gatedConfirmCall(payload),
+        )
 
       let confirmTokenization = payload =>
-        observeGatedConfirm(HyperLoaderLogger.Hyper(ConfirmTokenization), payload)
+        HyperLoaderLogger.observeMerchantCall(
+          ~event=HyperLoaderLogger.Hyper(ConfirmTokenization),
+          ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
+          ~call=() => gatedConfirmCall(payload),
+        )
 
       let confirmOneClickPayment = (payload, result: bool) =>
         HyperLoaderLogger.observeMerchantCall(
@@ -701,8 +705,9 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       }
 
       let paymentRequest = options =>
-        HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Hyper(PaymentRequest), ~call=() =>
-          makePaymentRequest(options)
+        HyperLoaderLogger.observeMerchantCall(
+          ~event=HyperLoaderLogger.Hyper(PaymentRequest),
+          ~call=() => makePaymentRequest(options),
         )
 
       let initPaymentSession = paymentSessionOptions => {

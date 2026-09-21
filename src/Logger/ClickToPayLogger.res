@@ -44,11 +44,14 @@ type lifecycleEvent =
 
 type functionEvent =
   | Initialize(providerDetails)
+  | Init(providerDetails)
   | IdentityLookup(providerDetails)
   | GetCards(providerDetails)
   | Authenticate(providerDetails)
   | EncryptCard(providerDetails)
   | Checkout(providerDetails)
+  | CheckoutWithCard(providerDetails)
+  | CheckoutWithNewCard(providerDetails)
   | UnbindAppInstance(providerDetails)
   | SignOut(providerDetails)
 
@@ -76,11 +79,14 @@ let lifecycleSeverity = event =>
 let payloadProvider = event =>
   switch event {
   | Initialize({provider})
+  | Init({provider})
   | IdentityLookup({provider})
   | GetCards({provider})
   | Authenticate({provider})
   | EncryptCard({provider})
   | Checkout({provider})
+  | CheckoutWithCard({provider})
+  | CheckoutWithNewCard({provider})
   | UnbindAppInstance({provider})
   | SignOut({provider}) => provider
   }
@@ -95,17 +101,21 @@ let functionSpec = event => {
 let functionSeverity = event =>
   switch event {
   | Initialize(_)
+  | Init(_)
   | IdentityLookup(_)
   | GetCards(_)
   | Authenticate(_)
   | UnbindAppInstance(_)
   | SignOut(_) => {success: Debug, failure: Warning}
-  | EncryptCard(_) | Checkout(_) => {success: Debug, failure: Error}
+  | EncryptCard(_)
+  | Checkout(_)
+  | CheckoutWithCard(_)
+  | CheckoutWithNewCard(_) => {success: Debug, failure: Error}
   }
 
 let merchantCallSpec = method => makeOperation(call, method->LoggerUtils.variantName)
 
-let merchantCallSeverity = method =>
+let merchantCallSeverity = (method: merchantMethod) =>
   switch method {
   | CheckoutWithCard => {success: Info, failure: Error}
   | InitSession
@@ -201,7 +211,11 @@ let observeApi = (
 let observeResource = (
   ~event: resourceEvent,
   ~url,
-  ~matchQuery=true,
+  ~attributes=[],
+  ~matchQuery=false,
+  ~dedupe=true,
+  ~timeoutMs=?,
+  ~abandoned=?,
   ~onLoad=() => (),
   ~onError=_ => (),
 ) =>
@@ -210,7 +224,11 @@ let observeResource = (
     ~severity=resourceSeverity,
     ~url,
     ~resource=event->resourceKind,
+    ~attributes,
     ~matchQuery,
+    ~dedupe,
+    ~timeoutMs?,
+    ~abandoned?,
     ~paymentMethod,
     ~onLoad,
     ~onError,

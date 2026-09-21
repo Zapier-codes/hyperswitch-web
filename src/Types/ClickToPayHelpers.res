@@ -195,11 +195,6 @@ let clickToPayCardItemToObjMapper = (json: JSON.t): clickToPayCard => {
   }
 }
 
-type ctpLogType = {
-  ctpProvider: string,
-  message: string,
-}
-
 type clickToPayToken = {
   dpaId: string,
   dpaName: string,
@@ -351,9 +346,8 @@ let initializeMastercardCheckout = (clickToPayToken: clickToPayToken) => {
       try {
         switch mcCheckoutService.contents {
         | Some(service) =>
-          ClickToPayLogger.observeFunction(
-            ~event=Initialize({provider: MastercardUctp}),
-            ~call=() => service->init(params),
+          ClickToPayLogger.observeFunction(~event=Init({provider: MastercardUctp}), ~call=() =>
+            service->init(params)
           )
           ->then(resp => {
             ClickToPayLogger.logLifecycle(~event=ProviderReady({provider: MastercardUctp}))
@@ -451,7 +445,7 @@ let checkoutWithCard = async (~windowRef: Types.window, ~srcDigitalCardId: strin
     switch mcCheckoutService.contents {
     | Some(service) => {
         let checkoutResp = await ClickToPayLogger.observeFunction(
-          ~event=Checkout({provider: MastercardUctp}),
+          ~event=CheckoutWithCard({provider: MastercardUctp}),
           ~call=() => service->checkoutWithCard(checkoutPayload),
         )
         Ok(checkoutResp)
@@ -503,8 +497,7 @@ let checkoutWithNewCard = async (payload: checkoutWithNewCardPayload) => {
     switch mcCheckoutService.contents {
     | Some(service) => {
         let checkoutResp = await ClickToPayLogger.observeFunction(
-          ~event=Checkout({provider: MastercardUctp}),
-          ~details=[("new_card", true->JSON.Encode.bool)],
+          ~event=CheckoutWithNewCard({provider: MastercardUctp}),
           ~call=() => service->checkoutWithNewCard(payload->Obj.magic),
         )
         Ok(checkoutResp)
@@ -717,16 +710,6 @@ type getCardsResultType = {
   maskedValidationChannel?: string,
 }
 
-let getStrFromActionCode = actionCode => {
-  switch actionCode {
-  | SUCCESS => "SUCCESS"
-  | PENDING_CONSUMER_IDV => "PENDING_CONSUMER_IDV"
-  | FAILED => "FAILED"
-  | ERROR => "ERROR"
-  | ADD_CARD => "ADD_CARD"
-  }
-}
-
 type unbindAppInstanceResultType = {error?: errorObj}
 
 type vsdk = {
@@ -794,6 +777,7 @@ let loadVisaScript = (clickToPayToken: clickToPayToken, onLoadCallback, onErrorC
   ClickToPayLogger.observeResource(
     ~event=VisaSdkScript,
     ~url=scriptSrc,
+    ~matchQuery=true,
     ~onLoad=onLoadCallback,
     ~onError=_ => onErrorCallback(),
   )

@@ -19,8 +19,8 @@ let statusAttribute = "data-hyper-load-status"
 
 let resourceName = resource =>
   switch resource {
-  | Script => "SCRIPT"
-  | Stylesheet => "STYLESHEET"
+  | Script => "script"
+  | Stylesheet => "stylesheet"
   }
 
 let resourceIdentity = url => url->String.replaceRegExp(/[?#].*$/, "")

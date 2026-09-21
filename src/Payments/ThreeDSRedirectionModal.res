@@ -15,6 +15,7 @@ let make = () => {
     SdkLogger.logUser(
       ~event=ThreeDsPopupDismissed,
       ~details=[("redirect_url_received", (redirectResponseUrl != "")->JSON.Encode.bool)],
+      ~paymentMethod=Card(Unspecified),
     )
     if redirectResponseUrl == "" {
       messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
@@ -51,6 +52,7 @@ let make = () => {
           SdkLogger.logLifecycle(
             ~event=ThreeDsPopupFailed({reason: MessageHandlingFailed}),
             ~exn=err,
+            ~paymentMethod=Card(Unspecified),
           )
           postFailedSubmitResponse(~errortype="error", ~message="Something went wrong.")
         }

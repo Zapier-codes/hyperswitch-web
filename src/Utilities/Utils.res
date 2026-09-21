@@ -1151,26 +1151,27 @@ let fetchApiWithLogging = async (
       ~url=uri,
       ~details=bodyStr->LoggerUtils.payloadDetails,
       ~call=() => {
-      let body = switch method {
-      | #GET => None
-      | _ => Some(Fetch.Body.string(bodyStr))
-      }
-      Fetch.fetch(
-        uri,
-        {
-          method,
-          ?body,
-          ?signal,
-          headers: getHeaders(
-            ~headers=headers->Option.getOr(Dict.make()),
-            ~uri,
-            ~customPodUri,
-            ~publishableKey,
-            ~sdkAuthorization,
-          ),
-        },
-      )
-    })
+        let body = switch method {
+        | #GET => None
+        | _ => Some(Fetch.Body.string(bodyStr))
+        }
+        Fetch.fetch(
+          uri,
+          {
+            method,
+            ?body,
+            ?signal,
+            headers: getHeaders(
+              ~headers=headers->Option.getOr(Dict.make()),
+              ~uri,
+              ~customPodUri,
+              ~publishableKey,
+              ~sdkAuthorization,
+            ),
+          },
+        )
+      },
+    )
     let data = await response->Fetch.Response.json
     response->Fetch.Response.ok ? onSuccess(data) : onFailure(data)
   } catch {
@@ -1949,8 +1950,6 @@ let getStringFromDict = (dict, key, defaultValue: string) => {
 }
 
 let getStringFromBool = val => val ? "true" : "false"
-let loadScriptIfNotExist = (~url, ~provider: SdkLogger.resourceEvent) =>
-  SdkLogger.observeResource(~event=provider, ~url)
 
 let defaultCountryCode = {
   let clientTimeZone = dateTimeFormat().resolvedOptions().timeZone

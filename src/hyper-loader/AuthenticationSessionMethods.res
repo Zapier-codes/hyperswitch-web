@@ -241,7 +241,7 @@ let makeClickToPaySession = async (
             ClickToPayLogger.logLifecycle(
               ~event=CardsListed({
                 provider: VisaUctp,
-                actionCode: SUCCESS->getStrFromActionCode,
+                actionCode: SUCCESS->LoggerUtils.variantName,
                 visa: visaCount,
                 mastercard: mastercardCount,
               }),
@@ -251,7 +251,7 @@ let makeClickToPaySession = async (
             ClickToPayLogger.logLifecycle(
               ~event=CardsListed({
                 provider: VisaUctp,
-                actionCode: SUCCESS->getStrFromActionCode,
+                actionCode: SUCCESS->LoggerUtils.variantName,
                 visa: 0,
                 mastercard: 0,
               }),
@@ -263,7 +263,7 @@ let makeClickToPaySession = async (
           ClickToPayLogger.logLifecycle(
             ~event=CardsListed({
               provider: VisaUctp,
-              actionCode: ADD_CARD->getStrFromActionCode,
+              actionCode: ADD_CARD->LoggerUtils.variantName,
               visa: 0,
               mastercard: 0,
             }),
@@ -276,7 +276,7 @@ let makeClickToPaySession = async (
               provider: VisaUctp,
               code: getCardsResponse.error
               ->Option.flatMap(err => err.reason)
-              ->Option.getOr(getCardsResponse.actionCode->getStrFromActionCode),
+              ->Option.getOr(getCardsResponse.actionCode->LoggerUtils.variantName),
             }),
           )
           "ERROR"
@@ -341,7 +341,7 @@ let makeClickToPaySession = async (
         ClickToPayLogger.logLifecycle(
           ~event=CardsListed({
             provider: VisaUctp,
-            actionCode: SUCCESS->getStrFromActionCode,
+            actionCode: SUCCESS->LoggerUtils.variantName,
             visa: visaCount,
             mastercard: mastercardCount,
           }),
@@ -355,7 +355,7 @@ let makeClickToPaySession = async (
             code: validateCustomerAuthenticationResponse.error
             ->Option.flatMap(err => err.reason)
             ->Option.getOr(
-              validateCustomerAuthenticationResponse.actionCode->getStrFromActionCode,
+              validateCustomerAuthenticationResponse.actionCode->LoggerUtils.variantName,
             ),
           }),
         )
@@ -566,7 +566,8 @@ let makeClickToPaySession = async (
                   ),
               )
             },
-            signOut: () => ClickToPayLogger.observeMerchantCall(~method=SignOut, ~call=() => signOut()),
+            signOut: () =>
+              ClickToPayLogger.observeMerchantCall(~method=SignOut, ~call=() => signOut()),
           }->Identity.anyTypeToJson
         }
 
@@ -589,9 +590,8 @@ let makeClickToPaySession = async (
             () => {
               let initConfig = ClickToPayHelpers.getVisaInitConfig(token, Some(clientSecret))
 
-              ClickToPayLogger.observeFunction(
-                ~event=Initialize({provider: VisaUctp}),
-                ~call=() => ClickToPayHelpers.vsdk.initialize(initConfig),
+              ClickToPayLogger.observeFunction(~event=Initialize({provider: VisaUctp}), ~call=() =>
+                ClickToPayHelpers.vsdk.initialize(initConfig)
               )
               ->then(async _ => {
                 ClickToPayLogger.logLifecycle(~event=ProviderReady({provider: VisaUctp}))
@@ -616,11 +616,11 @@ let makeClickToPaySession = async (
                 }
 
                 let mastercardInitPromise = ClickToPayLogger.observeFunction(
-                  ~event=Initialize({provider: MastercardDirect}),
+                  ~event=Init({provider: MastercardDirect}),
                   ~call=() => ClickToPayHelpers.mastercardDirectSdk.init(mastercardDirectInitData),
                 )
                 let visaInitPromise = ClickToPayLogger.observeFunction(
-                  ~event=Initialize({provider: VisaDirect}),
+                  ~event=Init({provider: VisaDirect}),
                   ~call=() => visaDirectSdk.init(visaDirectInitData),
                 )
 
@@ -632,7 +632,10 @@ let makeClickToPaySession = async (
                 JSON.Encode.null
               })
               ->catch(error => {
-                ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaDirect}), ~exn=error)
+                ClickToPayLogger.logLifecycle(
+                  ~event=ProviderUnavailable({provider: VisaDirect}),
+                  ~exn=error,
+                )
                 let failedErrorResponse = getFailedSubmitResponse(
                   ~errorType="ERROR",
                   ~message="An unknown error occurred while initializing Click to Pay session.",

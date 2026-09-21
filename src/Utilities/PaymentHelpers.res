@@ -375,13 +375,13 @@ let rec intentCall = (
     ~url=uri,
     ~details=bodyStr->LoggerUtils.payloadDetails,
     ~call=() =>
-    fetchApi(
-      uri,
-      ~method=fetchMethod,
-      ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
-      ~bodyStr,
-      ~sdkAuthorization,
-    )
+      fetchApi(
+        uri,
+        ~method=fetchMethod,
+        ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
+        ~bodyStr,
+        ~sdkAuthorization,
+      ),
   )
   ->then(res => {
     let url = makeUrl(confirmParam.return_url)
@@ -511,7 +511,7 @@ let rec intentCall = (
             let intentDict = data->getDictFromJson
             let intent = PaymentConfirmTypes.itemToObjMapper(intentDict)
             let paymentMethod = switch paymentType {
-            | Card => "CARD"
+            | Card => "card"
             | _ => intent.payment_method_type
             }
             let loggedPaymentMethod = LoggerTaxonomy.fromBackendPair(
@@ -762,10 +762,7 @@ let rec intentCall = (
                     ("clientSecret", clientSecret->JSON.Encode.string),
                     ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
                   ]->Dict.fromArray
-                SdkLogger.logLifecycle(
-                  ~event=VoucherShown,
-                  ~paymentMethod=?loggedPaymentMethod,
-                )
+                SdkLogger.logLifecycle(~event=VoucherShown, ~paymentMethod=?loggedPaymentMethod)
                 messageParentWindow([
                   ("fullscreen", true->JSON.Encode.bool),
                   ("param", `voucherData`->JSON.Encode.string),
@@ -2219,17 +2216,14 @@ let fetchSdkConfigs = async (
     },
   )
 
-  let response = await SdkLogger.observeStaticAsset(
-    ~event=SdkConfigs,
-    ~url=uri,
-    ~call=() =>
-      Utils.fetchApi(
-        uri,
-        ~method=#GET,
-        ~customPodUri=Some(customPodUri),
-        ~publishableKey=Some(publishableKey),
-        ~sdkAuthorization,
-      ),
+  let response = await SdkLogger.observeStaticAsset(~event=SdkConfigs, ~url=uri, ~call=() =>
+    Utils.fetchApi(
+      uri,
+      ~method=#GET,
+      ~customPodUri=Some(customPodUri),
+      ~publishableKey=Some(publishableKey),
+      ~sdkAuthorization,
+    )
   )
 
   try {

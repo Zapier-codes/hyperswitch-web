@@ -42,7 +42,9 @@ let make = (
 
   let handleFocus = ev => {
     setInputFocused(_ => true)
-    SdkLogger.logUser(~event=FieldFocused({field: name}))
+    if name->String.length > 0 {
+      SdkLogger.logUser(~event=FieldFocused({field: name}))
+    }
     switch setIsValid {
     | Some(fn) => fn(_ => None)
     | None => ()
@@ -57,7 +59,9 @@ let make = (
 
   let handleBlur = ev => {
     setInputFocused(_ => false)
-    SdkLogger.logUser(~event=FieldBlurred({field: name}))
+    if name->String.length > 0 {
+      SdkLogger.logUser(~event=FieldBlurred({field: name}))
+    }
     switch onBlur {
     | Some(fn) => fn(ev)
     | None => ()
@@ -66,7 +70,7 @@ let make = (
   }
 
   let wrappedOnChange = ev => {
-    if logInputChange {
+    if logInputChange && name->String.length > 0 {
       SdkLogger.logUser(~event=FieldEdited({field: name}))
     }
     onChange(ev)

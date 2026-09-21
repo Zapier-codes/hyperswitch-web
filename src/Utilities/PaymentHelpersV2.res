@@ -58,7 +58,7 @@ let intentCall = (
           (resolve, _) => {
             if isConfirm {
               let paymentMethod = switch paymentType {
-              | Card => "CARD"
+              | Card => "card"
               | _ =>
                 bodyStr
                 ->safeParse

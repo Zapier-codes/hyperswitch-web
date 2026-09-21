@@ -32,7 +32,10 @@ module OtpInput = {
 
     let callBacks = {
       otpChanged: ev => {
-        SdkLogger.logUser(~event=FieldEdited({field: "click_to_pay_otp"}))
+        SdkLogger.logUser(
+          ~event=FieldEdited({field: "click_to_pay_otp"}),
+          ~paymentMethod=Card(Unspecified),
+        )
         setClickToPayConfig(prev => {
           ...prev,
           otpError: "",
@@ -49,6 +52,7 @@ module OtpInput = {
       continueClicked: _ => {
         SdkLogger.logUser(
           ~event=CustomerVerificationSubmitted({source: ClickToPayOtp, provider: Some(VisaUctp)}),
+          ~paymentMethod=Card(Unspecified),
         )
         let verifyUserAndGetCards = async () => {
           try {
@@ -62,7 +66,7 @@ module OtpInput = {
         verifyUserAndGetCards()->ignore
       },
       resendClicked: _ => {
-        SdkLogger.logUser(~event=ClickToPayOtpResendRequested)
+        SdkLogger.logUser(~event=ClickToPayOtpResendRequested, ~paymentMethod=Card(Unspecified))
         setClickToPayConfig(prev => {
           ...prev,
           otpError: "",
@@ -86,6 +90,7 @@ module OtpInput = {
           let rememberMe = dict->getDictFromDict("detail")->getBool("rememberMe", false)
           SdkLogger.logUser(
             ~event=FieldToggled({field: "click_to_pay_remember_me_otp", enabled: rememberMe}),
+            ~paymentMethod=Card(Unspecified),
           )
           setIsClickToPayRememberMe(_ => rememberMe)
         })

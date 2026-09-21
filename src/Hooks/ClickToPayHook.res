@@ -32,7 +32,10 @@ let useClickToPay = (
     })
 
   let setVisaComponentState = view => {
-    SdkLogger.logState(~event=ClickToPayViewChanged({view: view->LoggerUtils.variantValue}))
+    SdkLogger.logState(
+      ~event=ClickToPayViewChanged({view: view->LoggerUtils.variantName}),
+      ~paymentMethod=Card(Unspecified),
+    )
     setClickToPayConfig(prev => {
       ...prev,
       visaComponentState: view,
@@ -73,7 +76,7 @@ let useClickToPay = (
               ClickToPayLogger.logLifecycle(
                 ~event=CardsListed({
                   provider: VisaUctp,
-                  actionCode: SUCCESS->getStrFromActionCode,
+                  actionCode: SUCCESS->LoggerUtils.variantName,
                   visa: brandCount("visa"),
                   mastercard: brandCount("mastercard"),
                 }),
@@ -94,7 +97,8 @@ let useClickToPay = (
         }
       | PENDING_CONSUMER_IDV => {
           SdkLogger.logState(
-            ~event=ClickToPayViewChanged({view: OTP_INPUT->LoggerUtils.variantValue}),
+            ~event=ClickToPayViewChanged({view: OTP_INPUT->LoggerUtils.variantName}),
+            ~paymentMethod=Card(Unspecified),
           )
           setClickToPayConfig(prev => {
             ...prev,
@@ -150,7 +154,7 @@ let useClickToPay = (
         } else {
           setVisaComponentState(NONE)
           ClickToPayLogger.logLifecycle(
-            ~event=CardsUnavailable({provider: VisaUctp, code: "INITIAL_CALL_FAILED"}),
+            ~event=CardsUnavailable({provider: VisaUctp, code: "initial_call_failed"}),
           )
         }
       }

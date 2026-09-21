@@ -215,8 +215,8 @@ let emitPhase = (
   | Failed =>
     OpFailed({
       durationMs,
-      class: ReturnedFailure,
-      error: exn->Option.map(LoggerUtils.summarizeValue),
+      class: exn->Option.isSome ? Threw : ReturnedFailure,
+      error: exn->Option.map(LoggerUtils.summarizeUnknown),
     })
   }
   operationOutcome->emitOutcome(~category, ~spec, ~severity, ~data, ~details, ~paymentMethod?)

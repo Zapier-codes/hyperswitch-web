@@ -148,6 +148,7 @@ let make = (~setIsShowClickToPayNotYou, ~isCTPAuthenticateNotYouClicked, ~getVis
             clickToPayConfig.clickToPayProvider,
           ),
         }),
+        ~paymentMethod=Card(Unspecified),
       )
       let country =
         countryCodes
@@ -284,7 +285,10 @@ module ClickToPayNotYouText = {
   @react.component
   let make = (~setIsShowClickToPayNotYou) => {
     let onNotYouClick = _ => {
-      SdkLogger.logUser(~event=ViewOpened({view: ClickToPayIdentityChange}))
+      SdkLogger.logUser(
+        ~event=ViewOpened({view: ClickToPayIdentityChange}),
+        ~paymentMethod=Card(Unspecified),
+      )
       setIsShowClickToPayNotYou(_ => true)
     }
 

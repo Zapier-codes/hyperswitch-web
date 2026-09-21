@@ -171,13 +171,25 @@ let make = (~sessionObj: SessionsType.token) => {
             }
           },
         },
-        _ => {
-          SdkLogger.logFunction(
-            ~event=KlarnaLoad,
-            ~outcome=Done,
-            ~startedAt=loadStartedAt,
-            ~paymentMethod=PayLater(Klarna),
-          )
+        loadResult => {
+          let loadError = loadResult->getDictFromJson->Dict.get("error")
+          switch loadError {
+          | Some(error) =>
+            SdkLogger.logFunction(
+              ~event=KlarnaLoad,
+              ~outcome=Failed,
+              ~startedAt=loadStartedAt,
+              ~exn=error->Identity.anyTypeToJson,
+              ~paymentMethod=PayLater(Klarna),
+            )
+          | None =>
+            SdkLogger.logFunction(
+              ~event=KlarnaLoad,
+              ~outcome=Done,
+              ~startedAt=loadStartedAt,
+              ~paymentMethod=PayLater(Klarna),
+            )
+          }
           setAreOneClickWalletsRendered(
             prev => {
               ...prev,

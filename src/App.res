@@ -9,14 +9,7 @@ let make = () => {
   let paymentType = paymentMode->CardThemeType.getPaymentMode
 
   let networkStatus = NetworkInformation.useNetworkInformation()
-  React.useMemo0(() => {
-    LoggerRuntime.configure(~source=Elements(paymentType))
-    Window.addEventListener(
-      "message",
-      (ev: Window.event) =>
-        ev.data->Utils.safeParse->Utils.getDictFromJson->LoggerContext.startSessionFromMessage,
-    )
-  })
+  React.useMemo0(() => SdkLogger.adoptSessionFromParent(~paymentType))
 
   React.useEffect1(() => {
     switch networkStatus {

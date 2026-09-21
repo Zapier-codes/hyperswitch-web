@@ -239,13 +239,19 @@ let summarizeValue = value => {
 
 let summarizeExn = error =>
   switch error {
-  | Exn.Error(error) => {
-      name: error->Exn.name->Option.getOr("UNKNOWN_ERROR")->screamingSnakeCase,
-      message: error->Exn.message->Option.map(truncate),
-      details: [],
+  | Exn.Error(jsError) =>
+    switch jsError->Exn.name {
+    | Some(name) => {
+        name: name->screamingSnakeCase,
+        message: jsError->Exn.message->Option.map(truncate),
+        details: [],
+      }
+    | None => jsError->summarizeValue
     }
   | _ => error->summarizeValue
   }
+
+let summarizeUnknown = value => value->Exn.anyToExnInternal->summarizeExn
 
 let summarizeErrorResponse = result =>
   result
@@ -321,10 +327,10 @@ let outcomeDetails = operationOutcome =>
       ("duration_ms", durationMs->JSON.Encode.float),
       ("failure_class", class->variantValue->JSON.Encode.string),
     ]->Array.concat(error->Option.map(errorDetails)->Option.getOr([]))
-  | OpTimedOut({durationMs, timeoutMs}) => [
-      ("duration_ms", durationMs->JSON.Encode.float),
-      ("timeout_ms", timeoutMs->JSON.Encode.int),
-    ]
+  | OpTimedOut({durationMs, timeoutMs}) =>
+    [("duration_ms", durationMs->JSON.Encode.float)]->Array.concat(
+      timeoutMs > 0 ? [("timeout_ms", timeoutMs->JSON.Encode.int)] : [],
+    )
   }
 
 let outcomeSeverity = (operationOutcome, ~severity) =>
