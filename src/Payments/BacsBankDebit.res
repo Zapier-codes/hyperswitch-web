@@ -85,6 +85,8 @@ let make = () => {
     None
   }, [complete])
 
+  let paymentMethodType = "bacs"
+  let paymentMethod = "bank_debit"
   let submitCallback = (ev: Window.event) => {
     let json = ev.data->safeParse
     let confirm = json->Utils.getDictFromJson->ConfirmType.itemToObjMapper
@@ -111,6 +113,13 @@ let make = () => {
         )
         ()
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }
@@ -132,9 +141,6 @@ let make = () => {
       setSortCodeError(_ => "Your sort code is invalid.")
     }
   }
-
-  let paymentMethodType = "bacs"
-  let paymentMethod = "bank_debit"
 
   <>
     <RenderIf condition={isVerifyPMAuthConnectorConfigured}>

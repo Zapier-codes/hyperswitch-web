@@ -66,6 +66,8 @@ let make = () => {
   UtilityHooks.useHandlePostMessages(~complete, ~empty, ~paymentType="ach_bank_debit")
   SubscriptionEventHooks.useEmitFormStatus(~empty, ~complete)
 
+  let paymentMethodType = "ach"
+  let paymentMethod = "bank_debit"
   let submitCallback = React.useCallback((ev: Window.event) => {
     let json = ev.data->safeParse
     let confirm = json->Utils.getDictFromJson->ConfirmType.itemToObjMapper
@@ -98,14 +100,18 @@ let make = () => {
         }
         ()
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }
   }, (email, modalData, fullName, isManualRetryEnabled, sdkAuthorization))
   useSubmitPaymentData(submitCallback)
-
-  let paymentMethodType = "ach"
-  let paymentMethod = "bank_debit"
 
   <>
     <RenderIf condition={isVerifyPMAuthConnectorConfigured}>

@@ -46,6 +46,13 @@ let make = () => {
           ~manualRetry=isManualRetryEnabled,
         )
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }

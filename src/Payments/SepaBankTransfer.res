@@ -20,6 +20,8 @@ let make = () => {
     ~paymentType="bank_transfer",
   )
 
+  let paymentMethodType = "sepa_bank_transfer"
+  let paymentMethod = "bank_transfer"
   let submitCallback = React.useCallback((ev: Window.event) => {
     let json = ev.data->safeParse
     let confirm = json->getDictFromJson->ConfirmType.itemToObjMapper
@@ -39,6 +41,13 @@ let make = () => {
           ~manualRetry=isManualRetryEnabled,
         )
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }
@@ -50,9 +59,6 @@ let make = () => {
     sdkAuthorization,
   ))
   useSubmitPaymentData(submitCallback)
-
-  let paymentMethodType = "sepa_bank_transfer"
-  let paymentMethod = "bank_transfer"
 
   <div className="flex flex-col animate-slowShow" style={gridGap: themeObj.spacingTab}>
     <RenderIf condition={layoutClass.\"type" === Accordion}>

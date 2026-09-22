@@ -23,6 +23,7 @@ type walletFailure =
   | MessageHandlingFailed
   | PaymentDataFailed
   | SdkMountFailed
+  | SheetFailed
 
 type vaultFailure =
   | FieldBindingFailed
@@ -30,6 +31,7 @@ type vaultFailure =
   | FieldUpdateFailed
   | FieldUnmountFailed
   | FormCreationFailed
+  | TokenizationFailed
 
 type threeDsMethodFailure =
   | MissingContainer
@@ -63,6 +65,7 @@ type unsupportedConnectorData = {connector: string}
 type paymentStatusUnknownData = {inferred: bool}
 
 type validationFailureData = {reason: string}
+type confirmBlockedData = {reason: string}
 type retryExhaustionData = {operation: string, attempts: int}
 
 type lifecycleEvent =
@@ -74,6 +77,7 @@ type lifecycleEvent =
   | PaymentRejected
   | PaymentStatusUnknown(paymentStatusUnknownData)
   | PaymentRetriesExhausted(retryExhaustionData)
+  | ConfirmBlocked(confirmBlockedData)
   | FormValidationFailed(validationFailureData)
   | WalletFlowResolved(walletFlowData)
   | WalletStageReached(walletStageData)
@@ -124,7 +128,8 @@ let walletFailureSeverity = reason =>
   | MissingNonce
   | ClientUnavailable
   | MessageHandlingFailed
-  | PaymentDataFailed =>
+  | PaymentDataFailed
+  | SheetFailed =>
     Error
   }
 
@@ -140,7 +145,8 @@ let vaultFailureSeverity = reason =>
   | FieldMountFailed
   | FormCreationFailed
   | FieldUpdateFailed
-  | FieldUnmountFailed =>
+  | FieldUnmountFailed
+  | TokenizationFailed =>
     Error
   }
 
@@ -177,6 +183,7 @@ let lifecycleSeverity = value =>
   | PaymentStatusUnknown(_)
   | WalletFlowExited
   | QrCodeExpired
+  | ConfirmBlocked(_)
   | FormValidationFailed(_)
   | EligibilityCheckFailed =>
     Warning

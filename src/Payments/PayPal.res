@@ -159,11 +159,25 @@ let make = (~walletOptions) => {
         if confirm.doSubmit && areRequiredFieldsValid && !areRequiredFieldsEmpty {
           onPaypalClick(~fromExpressButton=false, ev)
         } else if areRequiredFieldsEmpty {
+          SdkLogger.logLifecycle(
+            ~event=FormValidationFailed({reason: localeString.enterFieldsText}),
+            ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+              ~method=paymentMethod,
+              ~methodType=paymentMethodType,
+            ),
+          )
           Utils.postFailedSubmitResponse(
             ~errortype="validation_error",
             ~message=localeString.enterFieldsText,
           )
         } else if !areRequiredFieldsValid {
+          SdkLogger.logLifecycle(
+            ~event=FormValidationFailed({reason: localeString.enterValidDetailsText}),
+            ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+              ~method=paymentMethod,
+              ~methodType=paymentMethodType,
+            ),
+          )
           Utils.postFailedSubmitResponse(
             ~errortype="validation_error",
             ~message=localeString.enterValidDetailsText,

@@ -50,6 +50,8 @@ let make = () => {
     None
   }, [complete])
 
+  let paymentMethod = "voucher"
+  let paymentMethodType = "boleto"
   let submitCallback = React.useCallback((ev: Window.event) => {
     let json = ev.data->safeParse
     let confirm = json->Utils.getDictFromJson->ConfirmType.itemToObjMapper
@@ -67,6 +69,13 @@ let make = () => {
           ~manualRetry=isManualRetryEnabled,
         )
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }
@@ -84,9 +93,6 @@ let make = () => {
       setSocialSecurityNumberError(_ => "The social security number entered is invalid.")
     }
   }
-
-  let paymentMethod = "voucher"
-  let paymentMethodType = "boleto"
 
   <div className="flex flex-col animate-slowShow" style={gridGap: themeObj.spacingGridColumn}>
     <PaymentInputField

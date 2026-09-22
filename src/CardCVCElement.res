@@ -90,11 +90,21 @@ let make = (
                   ~targetOrigin=keys.parentURL,
                 )
               } else {
+                SdkLogger.logLifecycle(
+                  ~event=VaultFlowFailed({reason: TokenizationFailed}),
+                  ~failure=res,
+                  ~paymentMethod=Card(Unspecified),
+                )
                 postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
               }
               resolve()
             })
-            ->catch(_ => {
+            ->catch(err => {
+              SdkLogger.logLifecycle(
+                ~event=VaultFlowFailed({reason: TokenizationFailed}),
+                ~exn=err,
+                ~paymentMethod=Card(Unspecified),
+              )
               postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
               resolve()
             })
@@ -114,6 +124,10 @@ let make = (
               ? localeString.cvcNumberEmptyText
               : localeString.inCompleteCVCErrorText
           setCvcError(_ => errorMsg)
+          SdkLogger.logLifecycle(
+            ~event=FormValidationFailed({reason: errorMsg}),
+            ~paymentMethod=Card(Unspecified),
+          )
           if isOuterValid {
             postFailedSubmitResponse(~errortype="validation_error", ~message=errorMsg)
           }

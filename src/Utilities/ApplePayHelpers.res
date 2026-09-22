@@ -307,6 +307,10 @@ let useHandleApplePayResponse = (
           setApplePayClicked(_ => false)
           setShowApplePayLoader(_ => false)
           if isSavedMethodsFlow || !isWallet {
+            SdkLogger.logLifecycle(
+              ~event=WalletFlowFailed({reason: SheetFailed}),
+              ~paymentMethod=Wallet(ApplePay),
+            )
             postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
           }
         } else if dict->Dict.get("applePaySyncPayment")->Option.isSome {
@@ -408,11 +412,19 @@ let useSubmitCallback = (~isWallet, ~sessionObj, ~componentName) => {
           handleApplePayButtonClicked(~sessionObj, ~componentName, ~paymentMethodListValue)
         }
       } else if areRequiredFieldsEmpty {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: localeString.enterFieldsText}),
+          ~paymentMethod=Wallet(ApplePay),
+        )
         postFailedSubmitResponse(
           ~errortype="validation_error",
           ~message=localeString.enterFieldsText,
         )
       } else if !areRequiredFieldsValid {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: localeString.enterValidDetailsText}),
+          ~paymentMethod=Wallet(ApplePay),
+        )
         postFailedSubmitResponse(
           ~errortype="validation_error",
           ~message=localeString.enterValidDetailsText,

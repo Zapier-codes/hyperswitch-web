@@ -116,6 +116,10 @@ let make = (~paymentMethodName: string) => {
           ~manualRetry=isManualRetryEnabled,
         )
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=Dynamic(paymentMethodName),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }

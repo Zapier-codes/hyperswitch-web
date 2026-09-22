@@ -41,6 +41,7 @@ type lifecycleEvent =
   | CheckoutFailed(providerDetails)
   | OtpRejected(providerDetails)
   | PopupBlocked(providerDetails)
+  | SignOutFailed(providerDetails)
 
 type functionEvent =
   | Initialize(providerDetails)
@@ -69,7 +70,8 @@ let lifecycleSeverity = event =>
     Info
   | ProviderUnavailable(_)
   | CardsUnavailable(_)
-  | OtpRejected(_) =>
+  | OtpRejected(_)
+  | SignOutFailed(_) =>
     Warning
   | CheckoutFailed(_)
   | PopupBlocked(_) =>

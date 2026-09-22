@@ -58,6 +58,11 @@ let make = () => {
           let dict = json->getDictFromJson
           if dict->Dict.get("error")->Option.isSome {
             let errorObj = PaymentError.itemToObjMapper(dict)
+            SdkLogger.logLifecycle(
+              ~event=ThreeDsAuthRequestFailed,
+              ~failure=json,
+              ~paymentMethod=Card(Unspecified),
+            )
             messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
             postFailedSubmitResponse(
               ~errortype=errorObj.error.type_,

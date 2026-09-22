@@ -55,7 +55,9 @@ let useEmitCardState = (
       })
       messageParentWindow([("cardStateUpdate", windowPayload)], ~targetOrigin=parentURL)
       if !SadPortRegistry.postFrame(~key=portKey, portPayload) {
-        Console.warn(`[CardCollectorBridge] dropped port frame for unregistered portKey "${portKey}"`)
+        Console.warn(
+          `[CardCollectorBridge] dropped port frame for unregistered portKey "${portKey}"`,
+        )
       }
     } else {
       let stateEntries = [
@@ -114,7 +116,13 @@ let reportValidationErrors = (
   ~setCvcError,
   ~localeString: LocaleStringTypes.localeStrings,
 ) => {
-  let reportUserError = message => postFailedSubmitResponse(~errortype="validation_error", ~message)
+  let reportUserError = message => {
+    SdkLogger.logLifecycle(
+      ~event=FormValidationFailed({reason: message}),
+      ~paymentMethod=Card(Unspecified),
+    )
+    postFailedSubmitResponse(~errortype="validation_error", ~message)
+  }
 
   if cardNumber === "" {
     setCardError(_ => localeString.cardNumberEmptyText)

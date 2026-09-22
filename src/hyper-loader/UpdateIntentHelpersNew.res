@@ -60,26 +60,32 @@ let sendElementsUpdateToIframes = (iframes, ~newSdkAuthorization, ~newClientSecr
 // --- Shared error response helpers ---
 
 // Error response when updateIntent is already in progress (used as early return guard).
-let updateIntentInProgressResponse = () =>
+let updateIntentInProgressResponse = () => {
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
   getFailedSubmitResponse(
     ~message="An updateIntent operation is already in progress.",
     ~errorType="update_intent_error",
   )
+}
 
 // Error response when confirm is blocked because updateIntent is in progress.
 // Uses getFailedSubmitResponse (same format as Elements/Hyper).
-let confirmBlockedResponse = () =>
+let confirmBlockedResponse = () => {
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
   getFailedSubmitResponse(
     ~message="Cannot confirm payment while updateIntent is in progress.",
     ~errorType="update_intent_error",
   )
+}
 
 // Same as confirmBlockedResponse but uses handleFailureResponse (used in PaymentSessionMethods).
-let confirmBlockedResponseForSession = () =>
+let confirmBlockedResponseForSession = () => {
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
   handleFailureResponse(
     ~message="Cannot confirm payment while updateIntent is in progress.",
     ~errorType="update_intent_error",
   )
+}
 
 // --- Forward a data promise to iframes ---
 

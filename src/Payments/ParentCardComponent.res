@@ -789,6 +789,13 @@ let make = (
       let json = ev.data->safeParse
       let confirm = json->getDictFromJson->ConfirmType.itemToObjMapper
       if confirm.doSubmit && !hasCardFieldStatus {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: localeString.enterFieldsText}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(
           ~errortype="validation_error",
           ~message=localeString.enterFieldsText,
@@ -910,6 +917,13 @@ let make = (
                 ~confirmParams=confirm.confirmParams,
               )
             } else if dict->Dict.get("cardTokenFail")->Option.isSome {
+              SdkLogger.logLifecycle(
+                ~event=VaultFlowFailed({reason: TokenizationFailed}),
+                ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+                  ~method=paymentMethod,
+                  ~methodType=paymentMethodType,
+                ),
+              )
               postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
             }
             if isInnerCardMessage && dict->Dict.get("submitSuccessful")->Option.isSome {
@@ -938,8 +952,16 @@ let make = (
 
         iframeRef.current->Window.iframePostMessage(innerMessage, ~targetOrigin=innerIframeOrigin)
         if !outerValid {
-          let setUserError = message =>
+          let setUserError = message => {
+            SdkLogger.logLifecycle(
+              ~event=FormValidationFailed({reason: message}),
+              ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+                ~method=paymentMethod,
+                ~methodType=paymentMethodType,
+              ),
+            )
             postFailedSubmitResponse(~errortype="validation_error", ~message)
+          }
           if !areRequiredFieldsValid || !isNicknameValid {
             setUserError(localeString.enterValidDetailsText)
           } else if !isInstallmentValid {

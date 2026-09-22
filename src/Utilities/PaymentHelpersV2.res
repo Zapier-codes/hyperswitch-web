@@ -389,6 +389,7 @@ let useSaveCard = (paymentType: payment) => {
       | _ => ()
       }
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}))
       postFailedSubmitResponse(
         ~errortype="confirm_payment_failed",
         ~message="Payment failed. Try again!",
@@ -447,6 +448,7 @@ let useUpdateCard = (paymentType: payment) => {
       | _ => ()
       }
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}))
       postFailedSubmitResponse(
         ~errortype="confirm_payment_failed",
         ~message="Payment failed. Try again!",

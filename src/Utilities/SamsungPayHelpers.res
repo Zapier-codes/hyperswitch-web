@@ -110,6 +110,10 @@ let useHandleSamsungPayResponse = (
         )
       }
       if dict->Dict.get("samsungPayError")->Option.isSome {
+        SdkLogger.logLifecycle(
+          ~event=WalletFlowFailed({reason: SheetFailed}),
+          ~paymentMethod=Wallet(SamsungPay),
+        )
         messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
         if isSavedMethodsFlow || !isWallet {
           postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")

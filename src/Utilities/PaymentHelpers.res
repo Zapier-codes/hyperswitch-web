@@ -955,17 +955,23 @@ let rec intentCall = (
                 setIsManualRetryEnabled(_ => intent.manualRetryAllowed)
               }
               handleProcessingStatus(paymentType, sdkHandleOneClickConfirmPayment)
-            } else if !isPaymentSession {
-              postFailedSubmitResponse(
-                ~errortype="confirm_payment_failed",
-                ~message="Payment failed. Try again!",
-              )
             } else {
-              let failedSubmitResponse = getFailedSubmitResponse(
-                ~errorType="confirm_payment_failed",
-                ~message="Payment failed. Try again!",
+              SdkLogger.logLifecycle(
+                ~event=PaymentStatusUnknown({inferred: false}),
+                ~paymentMethod=?loggedPaymentMethod,
               )
-              resolve(failedSubmitResponse)
+              if !isPaymentSession {
+                postFailedSubmitResponse(
+                  ~errortype="confirm_payment_failed",
+                  ~message="Payment failed. Try again!",
+                )
+              } else {
+                let failedSubmitResponse = getFailedSubmitResponse(
+                  ~errorType="confirm_payment_failed",
+                  ~message="Payment failed. Try again!",
+                )
+                resolve(failedSubmitResponse)
+              }
             }
           },
         )->then(resolve)
@@ -1114,6 +1120,7 @@ let usePaymentSync = (paymentType: payment) => {
       | _ => ()
       }
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_client_secret"}))
       postFailedSubmitResponse(
         ~errortype="sync_payment_failed",
         ~message="Sync Payment Failed. Try Again!",
@@ -1206,6 +1213,7 @@ let useCompleteAuthorizeHandler = () => {
         ~sdkAuthorization=sdkAuth,
       )->ignore
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_client_secret"}))
       postFailedSubmitResponse(
         ~errortype="complete_authorize_failed",
         ~message="Complete Authorize Failed. Try Again!",
@@ -1421,6 +1429,7 @@ let usePaymentIntent = paymentType => {
           | None => intentWithoutMandate(mandatePaymentType)
           }
         } else {
+          SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "payment_methods_empty"}))
           postFailedSubmitResponse(
             ~errortype="payment_methods_empty",
             ~message="Payment Failed. Try again!",
@@ -1430,12 +1439,14 @@ let usePaymentIntent = paymentType => {
 
       | SemiLoaded => intentWithoutMandate("")
       | _ =>
+        SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "payment_methods_loading"}))
         postFailedSubmitResponse(
           ~errortype="payment_methods_loading",
           ~message="Please wait. Try again!",
         )
       }
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_client_secret"}))
       postFailedSubmitResponse(
         ~errortype="confirm_payment_failed",
         ~message="Payment failed. Try again!",
@@ -2057,6 +2068,7 @@ let usePostSessionTokens = (
           | None => intentWithoutMandate(mandatePaymentType)
           }
         } else {
+          SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "payment_methods_empty"}))
           postFailedSubmitResponse(
             ~errortype="payment_methods_empty",
             ~message="Payment Failed. Try again!",
@@ -2065,12 +2077,14 @@ let usePostSessionTokens = (
         }
       | SemiLoaded => intentWithoutMandate("")
       | _ =>
+        SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "payment_methods_loading"}))
         postFailedSubmitResponse(
           ~errortype="payment_methods_loading",
           ~message="Please wait. Try again!",
         )
       }
     | None =>
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_client_secret"}))
       postFailedSubmitResponse(
         ~errortype="post_session_tokens_failed",
         ~message="Post Session Tokens failed. Try again!",

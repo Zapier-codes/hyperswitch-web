@@ -464,6 +464,10 @@ let makeClickToPaySession = async (
       )
       switch unbindAppInstanceResponse.error {
       | Some(_) =>
+        ClickToPayLogger.logLifecycle(
+          ~event=SignOutFailed({provider: VisaUctp}),
+          ~details=[("error", unbindAppInstanceResponse.error->Identity.anyTypeToJson)],
+        )
         getClickToPayErrorResponse(
           ~error=unbindAppInstanceResponse.error,
           ~defaultErrorMessage=unbindAppInstanceErrorMessage,
@@ -477,7 +481,9 @@ let makeClickToPaySession = async (
         }
       }
     } catch {
-    | _ => getFailedSubmitResponse(~errorType="ERROR", ~message=unbindAppInstanceErrorMessage)
+    | exn =>
+      ClickToPayLogger.logLifecycle(~event=SignOutFailed({provider: VisaUctp}), ~exn)
+      getFailedSubmitResponse(~errorType="ERROR", ~message=unbindAppInstanceErrorMessage)
     }
   }
 
@@ -631,6 +637,10 @@ let makeClickToPaySession = async (
               ->ignore
             },
             () => {
+              ClickToPayLogger.logLifecycle(
+                ~event=ProviderUnavailable({provider: VisaUctp}),
+                ~details=[("failure", "script_load_failed"->JSON.Encode.string)],
+              )
               let failedErrorResponse = getFailedSubmitResponse(
                 ~errorType="ERROR",
                 ~message="Failed to load Click to Pay script.",

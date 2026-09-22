@@ -50,6 +50,8 @@ let make = () => {
     None
   }, [complete])
 
+  let paymentMethod = "bank_debit"
+  let paymentMethodType = "becs"
   let submitCallback = React.useCallback((ev: Window.event) => {
     let json = ev.data->safeParse
     let confirm = json->Utils.getDictFromJson->ConfirmType.itemToObjMapper
@@ -78,14 +80,18 @@ let make = () => {
         | None => ()
         }
       } else {
+        SdkLogger.logLifecycle(
+          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~method=paymentMethod,
+            ~methodType=paymentMethodType,
+          ),
+        )
         postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
       }
     }
   }, (email, fullName, modalData, isManualRetryEnabled, sdkAuthorization))
   useSubmitPaymentData(submitCallback)
-
-  let paymentMethod = "bank_debit"
-  let paymentMethodType = "becs"
 
   <div className="flex flex-col animate-slowShow" style={gridGap: themeObj.spacingGridColumn}>
     <EmailPaymentInput />

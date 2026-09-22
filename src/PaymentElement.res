@@ -354,7 +354,9 @@ let make = (~cardProps, ~expiryProps, ~cvcProps, ~paymentType: CardThemeType.mod
     let json = ev.data->safeParse
     let confirm = json->getDictFromJson->ConfirmType.itemToObjMapper
     if confirm.doSubmit && selectedOption == "" {
-      postFailedSubmitResponse(~errortype="validation_error", ~message="Select a payment method")
+      let message = "Select a payment method"
+      SdkLogger.logLifecycle(~event=FormValidationFailed({reason: message}))
+      postFailedSubmitResponse(~errortype="validation_error", ~message)
     }
   }, [selectedOption])
   useSubmitPaymentData(submitCallback)
