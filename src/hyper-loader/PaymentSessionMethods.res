@@ -121,7 +121,7 @@ let fetchCustomerSavedPaymentMethods = (
         ~details=[
           (
             "found",
-            (customerPaymentMethodsRef.contents->Array.get(0)->Option.isSome)->JSON.Encode.bool,
+            customerPaymentMethodsRef.contents->Array.get(0)->Option.isSome->JSON.Encode.bool,
           ),
         ],
         ~call=() =>
@@ -154,6 +154,12 @@ let fetchCustomerSavedPaymentMethods = (
             switch responseDataDict->Dict.get("data") {
             | Some(data) =>
               if redirect == "always" {
+                SdkLogger.logLifecycle(
+                  ~event=CustomerRedirectStarted({
+                    nextAction: "cvc_confirm_redirect",
+                    redirectOrigin: "payment_session",
+                  }),
+                )
                 Window.Location.replace(returnUrl)
               } else {
                 resolve(data)
@@ -389,10 +395,7 @@ let fetchCustomerSavedPaymentMethods = (
         ->then(json => {
           let metadata = json->Identity.anyTypeToJson
 
-          SdkLogger.logLifecycle(
-            ~event=WalletTokenReceived,
-            ~paymentMethod=Wallet(GooglePay),
-          )
+          SdkLogger.logLifecycle(~event=WalletTokenReceived, ~paymentMethod=Wallet(GooglePay))
 
           let completeGooglePayPayment = () => {
             let body = GooglePayHelpers.getGooglePayBodyFromResponse(
@@ -518,6 +521,13 @@ let fetchCustomerSavedPaymentMethods = (
 
     let isGooglePayUsable = isGooglePayPresent && gPayClientOpt->Option.isSome
 
+    let sessionApiJson = {
+      getCustomerDefaultSavedPaymentMethodData,
+      getCustomerLastUsedPaymentMethodData,
+      confirmWithCustomerDefaultPaymentMethod,
+      confirmWithLastUsedPaymentMethod,
+    }->Identity.anyTypeToJson
+
     if (isApplePayPresent && canMakePayments) || isGooglePayUsable {
       PaymentHelpers.fetchSessions(
         ~clientSecret=clientSecretRef.contents,
@@ -623,38 +633,17 @@ let fetchCustomerSavedPaymentMethods = (
         | _ => updateCustomerPaymentMethodsRef(~isFilterApplePay=true)
         }
 
-        {
-          getCustomerDefaultSavedPaymentMethodData,
-          getCustomerLastUsedPaymentMethodData,
-          confirmWithCustomerDefaultPaymentMethod,
-          confirmWithLastUsedPaymentMethod,
-        }
-        ->Identity.anyTypeToJson
-        ->resolve
+        sessionApiJson->resolve
       })
       ->catch(_ => {
         updateCustomerPaymentMethodsRef(~isFilterApplePay=true, ~isFilterGooglePay=true)
 
-        {
-          getCustomerDefaultSavedPaymentMethodData,
-          getCustomerLastUsedPaymentMethodData,
-          confirmWithCustomerDefaultPaymentMethod,
-          confirmWithLastUsedPaymentMethod,
-        }
-        ->Identity.anyTypeToJson
-        ->resolve
+        sessionApiJson->resolve
       })
     } else {
       updateCustomerPaymentMethodsRef(~isFilterApplePay=true, ~isFilterGooglePay=true)
 
-      {
-        getCustomerDefaultSavedPaymentMethodData,
-        getCustomerLastUsedPaymentMethodData,
-        confirmWithCustomerDefaultPaymentMethod,
-        confirmWithLastUsedPaymentMethod,
-      }
-      ->Identity.anyTypeToJson
-      ->resolve
+      sessionApiJson->resolve
     }
   })
   ->catch(err => {

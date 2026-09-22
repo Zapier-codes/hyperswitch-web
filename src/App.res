@@ -13,7 +13,14 @@ let make = () => {
 
   React.useEffect1(() => {
     switch networkStatus {
-    | Value(val) => SdkLogger.logState(~event=NetworkStatusChanged({online: val.isOnline}))
+    | Value(val) =>
+      SdkLogger.logState(
+        ~event=NetworkStatusChanged({online: val.isOnline}),
+        ~details=[
+          ("effective_type", val.effectiveType->JSON.Encode.string),
+          ("downlink", val.downlink->JSON.Encode.float),
+        ],
+      )
     | NOT_AVAILABLE => ()
     }
 

@@ -34,7 +34,7 @@ let randomId = length => {
 
 let safeRun = action =>
   try action() catch {
-  | _ => ()
+  | error => Console.error2("hyper logging internals failed:", error)
   }
 
 let stringOfBool = value => value ? "true" : "false"
@@ -292,6 +292,21 @@ let httpFailure = response =>
 
 let httpDetails = response => [("status_code", response->Fetch.Response.status->JSON.Encode.int)]
 
+let httpBodyFailure = ((response, data)) =>
+  response->Fetch.Response.ok
+    ? None
+    : Some(
+        data
+        ->summarizeErrorResponse
+        ->Option.getOr({
+          name: "HTTP_ERROR",
+          message: Some(response->Fetch.Response.status->Int.toString),
+          details: [],
+        }),
+      )
+
+let httpBodyDetails = ((response, _)) => response->httpDetails
+
 let intentErrorDetails = value =>
   switch value->Identity.anyTypeToJson->JSON.Decode.object {
   | None => []
@@ -316,22 +331,23 @@ let errorDetails = summary =>
 
 let isAborted = summary => summary.name === "ABORT_ERROR"
 
-let outcomeDetails = operationOutcome =>
-  switch operationOutcome {
-  | OpStarted => []
-  | OpDone({durationMs}) | OpReturned({durationMs}) | OpReused({durationMs}) => [
-      ("duration_ms", durationMs->JSON.Encode.float),
-    ]
-  | OpFailed({durationMs, class, error}) =>
-    [
-      ("duration_ms", durationMs->JSON.Encode.float),
-      ("failure_class", class->variantValue->JSON.Encode.string),
-    ]->Array.concat(error->Option.map(errorDetails)->Option.getOr([]))
-  | OpTimedOut({durationMs, timeoutMs}) =>
-    [("duration_ms", durationMs->JSON.Encode.float)]->Array.concat(
-      timeoutMs > 0 ? [("timeout_ms", timeoutMs->JSON.Encode.int)] : [],
-    )
-  }
+let outcomeDetails = operationOutcome => {
+  let duration =
+    operationOutcome
+    ->durationOf
+    ->Option.map(durationMs => [("duration_ms", durationMs->JSON.Encode.float)])
+    ->Option.getOr([])
+  duration->Array.concat(
+    switch operationOutcome {
+    | OpStarted | OpDone(_) | OpReturned(_) | OpReused(_) => []
+    | OpFailed({class, error}) =>
+      [("failure_class", class->variantValue->JSON.Encode.string)]->Array.concat(
+        error->Option.map(errorDetails)->Option.getOr([]),
+      )
+    | OpTimedOut({timeoutMs}) => timeoutMs > 0 ? [("timeout_ms", timeoutMs->JSON.Encode.int)] : []
+    },
+  )
+}
 
 let outcomeSeverity = (operationOutcome, ~severity) =>
   switch operationOutcome {

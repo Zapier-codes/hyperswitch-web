@@ -154,7 +154,14 @@ let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?) =>
     ~paymentMethod,
   )
 
-let observeFunction = (~event: functionEvent, ~details=[], ~timeoutMs=?, ~detailsOf=?, ~call) =>
+let observeFunction = (
+  ~event: functionEvent,
+  ~details=[],
+  ~timeoutMs=?,
+  ~detailsOf=?,
+  ~paymentMethod=paymentMethod,
+  ~call,
+) =>
   LoggerRuntime.observe(
     ~category=Function,
     ~spec=event->functionSpec,
@@ -173,6 +180,7 @@ let observeMerchantCall = (
   ~details=[],
   ~timeoutMs=?,
   ~detailsOf=?,
+  ~paymentMethod=paymentMethod,
   ~call,
 ) =>
   LoggerRuntime.observe(

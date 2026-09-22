@@ -23,15 +23,14 @@ let make = (~token: SessionsType.token) => {
   let {country, state, pinCode} = PaymentUtils.useNonPiiAddressData()
 
   let onClick = _ => {
+    SdkLogger.logUser(
+      ~event=ExpressCheckoutClicked,
+      ~paymentMethod=Wallet(Paze),
+      ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+    )
     if isTestMode {
       Console.warn("Paze button clicked in test mode - interaction disabled")
-      SdkLogger.logUser(
-        ~event=ExpressCheckoutClicked,
-        ~paymentMethod=Wallet(Paze),
-        ~details=[("test_mode", true->JSON.Encode.bool)],
-      )
     } else {
-      SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(Paze))
       PaymentUtils.emitPaymentMethodInfo(
         ~paymentMethod="wallet",
         ~paymentMethodType="paze",

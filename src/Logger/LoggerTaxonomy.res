@@ -109,38 +109,6 @@ let typeName = value =>
     None
   }
 
-let fromBackendValue = value =>
-  switch value->String.toLowerCase->String.trim {
-  | "" => None
-  | "credit" => Some(Card(Credit))
-  | "debit" => Some(Card(Debit))
-  | "google_pay" => Some(Wallet(GooglePay))
-  | "apple_pay" => Some(Wallet(ApplePay))
-  | "samsung_pay" => Some(Wallet(SamsungPay))
-  | "paypal" => Some(Wallet(Paypal))
-  | "paypal_sdk" => Some(Wallet(PaypalSdk))
-  | "paze" => Some(Wallet(Paze))
-  | "venmo" => Some(Wallet(Venmo))
-  | "klarna" => Some(PayLater(Klarna))
-  | "affirm" => Some(PayLater(Affirm))
-  | "afterpay_clearpay" => Some(PayLater(AfterpayClearpay))
-  | "pay_bright" => Some(PayLater(PayBright))
-  | "walley" => Some(PayLater(Walley))
-  | "alma" => Some(PayLater(Alma))
-  | "atome" => Some(PayLater(Atome))
-  | "plaid" => Some(OpenBanking(Plaid))
-  | "card" => Some(Card(Unspecified))
-  | "wallet" => Some(Wallet(Unspecified))
-  | "pay_later" => Some(PayLater(Unspecified))
-  | "open_banking" => Some(OpenBanking(Unspecified))
-  | "bank_redirect" => Some(BankRedirect(Unspecified))
-  | "bank_debit" => Some(BankDebit(Unspecified))
-  | "bank_transfer" => Some(BankTransfer(Unspecified))
-  | "card_redirect" => Some(CardRedirect(Unspecified))
-  | "mobile_payment" => Some(MobilePayment(Unspecified))
-  | other => Some(Dynamic(other))
-  }
-
 let cardSubtype = value =>
   switch value {
   | "credit" => Credit
@@ -176,6 +144,39 @@ let openBankingSubtype = value =>
   switch value {
   | "plaid" => Plaid
   | other => Dynamic(other)
+  }
+
+let fromBackendValue = value =>
+  switch value->String.toLowerCase->String.trim {
+  | "" => None
+  | ("credit" | "debit") as subtype => Some(Card(subtype->cardSubtype))
+  | ("google_pay"
+    | "apple_pay"
+    | "samsung_pay"
+    | "paypal"
+    | "paypal_sdk"
+    | "paze"
+    | "venmo") as subtype =>
+    Some(Wallet(subtype->walletSubtype))
+  | ("klarna"
+    | "affirm"
+    | "afterpay_clearpay"
+    | "pay_bright"
+    | "walley"
+    | "alma"
+    | "atome") as subtype =>
+    Some(PayLater(subtype->payLaterSubtype))
+  | "plaid" as subtype => Some(OpenBanking(subtype->openBankingSubtype))
+  | "card" => Some(Card(Unspecified))
+  | "wallet" => Some(Wallet(Unspecified))
+  | "pay_later" => Some(PayLater(Unspecified))
+  | "open_banking" => Some(OpenBanking(Unspecified))
+  | "bank_redirect" => Some(BankRedirect(Unspecified))
+  | "bank_debit" => Some(BankDebit(Unspecified))
+  | "bank_transfer" => Some(BankTransfer(Unspecified))
+  | "card_redirect" => Some(CardRedirect(Unspecified))
+  | "mobile_payment" => Some(MobilePayment(Unspecified))
+  | other => Some(Dynamic(other))
   }
 
 let withType = (value, typeValue) =>

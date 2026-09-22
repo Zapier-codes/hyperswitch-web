@@ -174,15 +174,14 @@ let make = (
   let {country, state, pinCode} = PaymentUtils.useNonPiiAddressData()
 
   let onGooglePaymentButtonClicked = () => {
+    SdkLogger.logUser(
+      ~event=ExpressCheckoutClicked,
+      ~paymentMethod=Wallet(GooglePay),
+      ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+    )
     if isTestMode {
       Console.warn("Google Pay button clicked in test mode - interaction disabled")
-      SdkLogger.logUser(
-        ~event=ExpressCheckoutClicked,
-        ~paymentMethod=Wallet(GooglePay),
-        ~details=[("test_mode", true->JSON.Encode.bool)],
-      )
     } else {
-      SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(GooglePay))
       PaymentUtils.emitPaymentMethodInfo(
         ~paymentMethod,
         ~paymentMethodType,
@@ -238,7 +237,14 @@ let make = (
         }
         resolve()
       })
-      ->catch(_ => resolve())
+      ->catch(exn => {
+        SdkLogger.logLifecycle(
+          ~event=WalletFlowFailed({reason: ListenerSetupFailed}),
+          ~paymentMethod=Wallet(GooglePay),
+          ~exn,
+        )
+        resolve()
+      })
       ->ignore
     }
   }

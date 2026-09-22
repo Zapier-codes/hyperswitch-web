@@ -101,8 +101,9 @@ let make = () => {
     let metadataDict = stateMetadataRef.current->JSON.Decode.object->Option.getOr(Dict.make())
     let iframeId = metadataDict->getString("iframeId", "")
 
+    SdkLogger.logLifecycle(~event, ~paymentMethod=Card(Unspecified), ~exn?)
+
     if iframeId->String.length > 0 && !isThreeDSMethodCompletionFired.current {
-      SdkLogger.logLifecycle(~event, ~paymentMethod=Card(Unspecified), ~exn?)
       stateMetadataRef.current
       ->Utils.getDictFromJson
       ->Dict.set("3dsMethodComp", "N"->JSON.Encode.string)
@@ -254,7 +255,7 @@ let make = () => {
           }
         }
       } catch {
-      | _err => ()
+      | exn => SdkLogger.logCrash(~origin=ParentWindowMessage, ~exn)
       }
 
       if consumePostMessageForThreeDsMethodCompletionRef.current && threeDsUrlRef.current !== "" {

@@ -66,9 +66,9 @@ let useClickToPay = (
       | SUCCESS => {
           let cards = switch cardsResult.profiles {
           | Some(profilesArray) => {
+              let allCards = profilesArray->Array.flatMap(profile => profile.maskedCards)
               let brandCount = brand =>
-                profilesArray
-                ->Array.flatMap(profile => profile.maskedCards)
+                allCards
                 ->Array.filter(card =>
                   card.paymentCardDescriptor->String.toLowerCase->String.includes(brand)
                 )
@@ -96,13 +96,9 @@ let useClickToPay = (
           })
         }
       | PENDING_CONSUMER_IDV => {
-          SdkLogger.logState(
-            ~event=ClickToPayViewChanged({view: OTP_INPUT->LoggerUtils.variantName}),
-            ~paymentMethod=Card(Unspecified),
-          )
+          setVisaComponentState(OTP_INPUT)
           setClickToPayConfig(prev => {
             ...prev,
-            visaComponentState: OTP_INPUT,
             maskedIdentity: cardsResult.maskedValidationChannel->Option.getOr(""),
           })
         }
@@ -121,31 +117,15 @@ let useClickToPay = (
                   ...prev,
                   otpError: "VALIDATION_DATA_INVALID",
                 })
-              | "OTP_SEND_FAILED" =>
-                ClickToPayLogger.logLifecycle(
-                  ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
-                )
-                setClickToPayConfig(prev => {
-                  ...prev,
-                  otpError: "NONE",
-                })
-
-              | "ACCT_INACCESSIBLE" =>
-                ClickToPayLogger.logLifecycle(
-                  ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
-                )
-                setClickToPayConfig(prev => {
-                  ...prev,
-                  otpError: "ACCT_INACCESSIBLE",
-                })
               | _ =>
-                setClickToPayConfig(prev => {
-                  ...prev,
-                  otpError: "NONE",
-                })
                 ClickToPayLogger.logLifecycle(
                   ~event=CardsUnavailable({provider: VisaUctp, code: reason}),
                 )
+                let otpError = reason == "ACCT_INACCESSIBLE" ? "ACCT_INACCESSIBLE" : "NONE"
+                setClickToPayConfig(prev => {
+                  ...prev,
+                  otpError,
+                })
               }
             | None => setVisaComponentState(NONE)
             }
@@ -159,7 +139,12 @@ let useClickToPay = (
         }
       }
     } catch {
-    | _ => setClickToPayNotReady()
+    | exn =>
+      ClickToPayLogger.logLifecycle(
+        ~event=CardsUnavailable({provider: VisaUctp, code: "processing_exception"}),
+        ~exn,
+      )
+      setClickToPayNotReady()
     }
   }
 
@@ -235,7 +220,9 @@ let useClickToPay = (
       | None => setClickToPayNotReady()
       }
     } catch {
-    | _ => setClickToPayNotReady()
+    | exn =>
+      ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaUctp}), ~exn)
+      setClickToPayNotReady()
     }
   }
 

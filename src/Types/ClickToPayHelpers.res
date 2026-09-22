@@ -1020,10 +1020,16 @@ let handleCheckoutWithCard = async (
               }
             }
           }
-        | None => closeWindow(ERROR, JSON.Encode.null)
+        | None => {
+            ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}))
+            closeWindow(ERROR, JSON.Encode.null)
+          }
         }
       } catch {
-      | _ => closeWindow(ERROR, JSON.Encode.null)
+      | exn => {
+          ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}), ~exn)
+          closeWindow(ERROR, JSON.Encode.null)
+        }
       }
     | NONE => closeWindow(ERROR, JSON.Encode.null)
     }
@@ -1151,10 +1157,16 @@ let handleProceedToPay = async (
                 }
               }
             }
-          | None => closeWindow(ERROR, JSON.Encode.null)
+          | None => {
+              ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}))
+              closeWindow(ERROR, JSON.Encode.null)
+            }
           }
         } catch {
-        | _ => closeWindow(ERROR, JSON.Encode.null)
+        | exn => {
+            ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}), ~exn)
+            closeWindow(ERROR, JSON.Encode.null)
+          }
         }
       | NONE => closeWindow(ERROR, JSON.Encode.null)
       }
@@ -1185,6 +1197,9 @@ let handleProceedToPay = async (
       )
     }
   } catch {
-  | _ => closeWindow(ERROR, JSON.Encode.null)
+  | exn => {
+      ClickToPayLogger.logLifecycle(~event=CheckoutFailed({provider: VisaUctp}), ~exn)
+      closeWindow(ERROR, JSON.Encode.null)
+    }
   }
 }

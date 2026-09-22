@@ -715,7 +715,11 @@ let make = (
                 ~confirmParams,
                 ~includeAcceptance=false,
               )
-            | Error(_) => ()
+            | Error(err) =>
+              ClickToPayLogger.logLifecycle(
+                ~event=CheckoutFailed({provider: MastercardUctp}),
+                ~exn=err,
+              )
             }
           } catch {
           | err =>

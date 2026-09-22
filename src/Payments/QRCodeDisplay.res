@@ -143,7 +143,13 @@ let make = () => {
             Modal.close(setOpenModal)
             postSubmitResponse(~jsonData=res, ~url=return_url)
           } catch {
-          | error => Console.error2("Error while polling payment intent:", error)
+          | error =>
+            SdkLogger.logLifecycle(
+              ~event=PaymentStatusUnknown({inferred: true}),
+              ~exn=error,
+              ~paymentMethod=?loggedPaymentMethodRef.current,
+            )
+            Console.error2("Error while polling payment intent:", error)
           }
         }
       }
@@ -167,12 +173,19 @@ let make = () => {
       postSubmitResponse(~jsonData=json, ~url=return_url)
       Modal.close(setOpenModal)
     } catch {
-    | e => Console.error2("Retrieve Failed", e)
+    | e =>
+      SdkLogger.logLifecycle(
+        ~event=PaymentStatusUnknown({inferred: true}),
+        ~exn=e,
+        ~paymentMethod=?loggedPaymentMethodRef.current,
+      )
+      Console.error2("Retrieve Failed", e)
     }
   }
 
   React.useEffect(() => {
     if expiryTime < 1000.0 {
+      SdkLogger.logLifecycle(~event=QrCodeExpired, ~paymentMethod=?loggedPaymentMethodRef.current)
       closeModal()->ignore
     }
 

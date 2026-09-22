@@ -23,17 +23,15 @@ let make = () => {
 
   let onKlarnaClick = async _ev => {
     try {
+      SdkLogger.logUser(
+        ~event=ExpressCheckoutClicked,
+        ~paymentMethod=PayLater(Klarna),
+        ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+      )
       if isTestMode {
         Console.warn("Klarna checkout button clicked in test mode - interaction disabled")
-        SdkLogger.logUser(
-          ~event=ExpressCheckoutClicked,
-          ~paymentMethod=PayLater(Klarna),
-          ~details=[("test_mode", true->JSON.Encode.bool)],
-        )
         resolve()
       } else {
-        SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=PayLater(Klarna))
-
         setKlarnaClicked(_ => true)
 
         let result = await Utils.makeOneClickHandlerPromise(sdkHandleIsThere)
@@ -62,7 +60,13 @@ let make = () => {
         resolve()
       }
     } catch {
-    | _ => resolve()
+    | exn =>
+      SdkLogger.logLifecycle(
+        ~event=WalletFlowFailed({reason: PaymentDataFailed}),
+        ~paymentMethod=PayLater(Klarna),
+        ~exn,
+      )
+      resolve()
     }
   }
 

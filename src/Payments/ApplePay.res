@@ -268,15 +268,14 @@ let make = (~sessionObj: option<JSON.t>, ~walletOptions) => {
   let {country, state, pinCode} = PaymentUtils.useNonPiiAddressData()
 
   let onApplePayButtonClicked = () => {
+    SdkLogger.logUser(
+      ~event=ExpressCheckoutClicked,
+      ~paymentMethod=Wallet(ApplePay),
+      ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+    )
     if isTestMode {
       Console.warn("Apple Pay button clicked in test mode - interaction disabled")
-      SdkLogger.logUser(
-        ~event=ExpressCheckoutClicked,
-        ~paymentMethod=Wallet(ApplePay),
-        ~details=[("test_mode", true->JSON.Encode.bool)],
-      )
     } else {
-      SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(ApplePay))
       PaymentUtils.emitPaymentMethodInfo(
         ~paymentMethod,
         ~paymentMethodType,
@@ -328,7 +327,12 @@ let make = (~sessionObj: option<JSON.t>, ~walletOptions) => {
           }
           resolve()
         })
-        ->catch(_ => {
+        ->catch(exn => {
+          SdkLogger.logLifecycle(
+            ~event=WalletFlowFailed({reason: ListenerSetupFailed}),
+            ~paymentMethod=Wallet(ApplePay),
+            ~exn,
+          )
           resolve()
         })
         ->ignore

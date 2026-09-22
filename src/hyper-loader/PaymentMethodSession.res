@@ -609,22 +609,22 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                     ~event=HyperLoaderLogger.CardField(Focus),
                     ~details=vgsFieldDetails,
                     ~call=() => {
-                  switch getFieldHandle() {
-                  | Some(vgsFieldHandle) =>
-                    try {
-                      vgsFieldHandle.focus->Option.forEach(invoke => invoke())
-                    } catch {
-                    | exn =>
-                      Console.error2(
-                        `[PaymentMethodSession] VGS focus(${fieldId}) threw`,
-                        exn->Identity.anyTypeToJson,
-                      )
-                    }
-                  | None =>
-                    Console.warn(
-                      `[PaymentMethodSession] VGS focus(${fieldId}) — field not yet mounted`,
-                    )
-                  }
+                      switch getFieldHandle() {
+                      | Some(vgsFieldHandle) =>
+                        try {
+                          vgsFieldHandle.focus->Option.forEach(invoke => invoke())
+                        } catch {
+                        | exn =>
+                          Console.error2(
+                            `[PaymentMethodSession] VGS focus(${fieldId}) threw`,
+                            exn->Identity.anyTypeToJson,
+                          )
+                        }
+                      | None =>
+                        Console.warn(
+                          `[PaymentMethodSession] VGS focus(${fieldId}) — field not yet mounted`,
+                        )
+                      }
                     },
                   ),
                 blur: () =>
@@ -632,22 +632,22 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                     ~event=HyperLoaderLogger.CardField(Blur),
                     ~details=vgsFieldDetails,
                     ~call=() => {
-                  switch getFieldHandle() {
-                  | Some(vgsFieldHandle) =>
-                    try {
-                      vgsFieldHandle.blur->Option.forEach(invoke => invoke())
-                    } catch {
-                    | exn =>
-                      Console.error2(
-                        `[PaymentMethodSession] VGS blur(${fieldId}) threw`,
-                        exn->Identity.anyTypeToJson,
-                      )
-                    }
-                  | None =>
-                    Console.warn(
-                      `[PaymentMethodSession] VGS blur(${fieldId}) — field not yet mounted`,
-                    )
-                  }
+                      switch getFieldHandle() {
+                      | Some(vgsFieldHandle) =>
+                        try {
+                          vgsFieldHandle.blur->Option.forEach(invoke => invoke())
+                        } catch {
+                        | exn =>
+                          Console.error2(
+                            `[PaymentMethodSession] VGS blur(${fieldId}) threw`,
+                            exn->Identity.anyTypeToJson,
+                          )
+                        }
+                      | None =>
+                        Console.warn(
+                          `[PaymentMethodSession] VGS blur(${fieldId}) — field not yet mounted`,
+                        )
+                      }
                     },
                   ),
                 clear: () =>
@@ -655,33 +655,33 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                     ~event=HyperLoaderLogger.CardField(Clear),
                     ~details=vgsFieldDetails,
                     ~call=() => {
-                  switch getFieldHandle() {
-                  | Some(vgsFieldHandle) =>
-                    try {
-                      let cleared = switch vgsFieldHandle.clear {
-                      | Some(invoke) => {
-                          invoke()
-                          true
+                      switch getFieldHandle() {
+                      | Some(vgsFieldHandle) =>
+                        try {
+                          let cleared = switch vgsFieldHandle.clear {
+                          | Some(invoke) => {
+                              invoke()
+                              true
+                            }
+                          | None => false
+                          }
+                          if !cleared {
+                            Console.warn(
+                              `[PaymentMethodSession] VGS clear(${fieldId}) — field has no clear() method; use update({placeholder: ..., validations: ...}) instead`,
+                            )
+                          }
+                        } catch {
+                        | exn =>
+                          Console.error2(
+                            `[PaymentMethodSession] VGS clear(${fieldId}) threw`,
+                            exn->Identity.anyTypeToJson,
+                          )
                         }
-                      | None => false
-                      }
-                      if !cleared {
+                      | None =>
                         Console.warn(
-                          `[PaymentMethodSession] VGS clear(${fieldId}) — field has no clear() method; use update({placeholder: ..., validations: ...}) instead`,
+                          `[PaymentMethodSession] VGS clear(${fieldId}) — field not yet mounted`,
                         )
                       }
-                    } catch {
-                    | exn =>
-                      Console.error2(
-                        `[PaymentMethodSession] VGS clear(${fieldId}) threw`,
-                        exn->Identity.anyTypeToJson,
-                      )
-                    }
-                  | None =>
-                    Console.warn(
-                      `[PaymentMethodSession] VGS clear(${fieldId}) — field not yet mounted`,
-                    )
-                  }
                     },
                   ),
                 on: (event, cb) => {
@@ -713,6 +713,10 @@ let make = (options: JSON.t): initPaymentMethodSession => {
         | other => {
             Console.error(
               `[PaymentMethodSession] unsupported_provider: vaultType "${other}" not yet supported`,
+            )
+            HyperLoaderLogger.logMerchantIssue(
+              ~issue=ConnectorMisconfigured,
+              ~details=[("vault", other->JSON.Encode.string)],
             )
             Types.defaultFieldHandle
           }
@@ -1057,6 +1061,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                 "[PaymentMethodSession] VGS unmountAll() threw during deinit",
                 exn->Identity.anyTypeToJson,
               )
+              SdkLogger.logLifecycle(~event=VaultFlowFailed({reason: FieldUnmountFailed}), ~exn)
             }
           )
           vgsBrokerRef := None

@@ -4,11 +4,13 @@ let schemaVersion = 7
 
 type source =
   | HyperLoader
+  | Headless
   | Elements(CardThemeType.mode)
 
 let sourceName = source =>
   switch source {
   | HyperLoader => "HYPER_LOADER"
+  | Headless => "HEADLESS"
   | Elements(mode) =>
     `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerUtils.screamingSnakeCase}`
   }
@@ -19,14 +21,6 @@ let configure = (~source) => currentSource := source->sourceName
 
 let browser = UAParser.make().browser
 
-let minimumSeverity = switch GlobalVars.loggingLevelStr->String.trim->String.toUpperCase {
-| "DEBUG" => Debug
-| "INFO" => Info
-| "WARNING" | "WARN" => Warning
-| "ERROR" => Error
-| _ => Debug
-}
-
 let rank = severity =>
   switch severity {
   | Debug => 0
@@ -35,7 +29,16 @@ let rank = severity =>
   | Error => 3
   }
 
-let isEnabled = severity => GlobalVars.enableLogging && severity->rank >= minimumSeverity->rank
+let minimumRank = switch GlobalVars.loggingLevelStr->String.trim->String.toUpperCase {
+| "DEBUG" => Debug->rank
+| "INFO" => Info->rank
+| "WARNING" | "WARN" => Warning->rank
+| "ERROR" => Error->rank
+| "SILENT" => Error->rank + 1
+| _ => Debug->rank
+}
+
+let isEnabled = severity => GlobalVars.enableLogging && severity->rank >= minimumRank
 
 let emitCounts = ref(Dict.make())
 
@@ -64,6 +67,7 @@ let emit = (
   ~durationMs: option<float>=?,
   ~paymentMethod: option<LoggerTaxonomy.paymentMethod>=?,
   ~context: option<LoggerContext.t>=?,
+  ~rateKey: option<string>=?,
 ) =>
   if severity->isEnabled {
     LoggerUtils.safeRun(() => {
@@ -74,15 +78,16 @@ let emit = (
         ~subject=spec.subject,
         ~outcome=spec.outcome,
       )
+      let countKey = switch rateKey {
+      | Some(rateKey) => `${name}#${rateKey}`
+      | None => name
+      }
       let limit = GlobalVars.maxLogsPushedPerEventName
-      let seen = emitCounts.contents->Dict.get(name)->Option.getOr(0)
+      let seen = emitCounts.contents->Dict.get(countKey)->Option.getOr(0)
 
       if seen <= limit {
-        emitCounts.contents->Dict.set(name, seen + 1)
-        let paymentMethod = switch paymentMethod {
-        | Some(_) as paymentMethod => paymentMethod
-        | None => context.paymentMethod
-        }
+        emitCounts.contents->Dict.set(countKey, seen + 1)
+        let paymentMethod = paymentMethod->Option.orElse(context.paymentMethod)
         let errorDetails =
           switch exn {
           | Some(exn) => Some(exn->LoggerUtils.summarizeExn)
@@ -91,11 +96,13 @@ let emit = (
           ->Option.map(LoggerUtils.errorDetails)
           ->Option.getOr([])
         let dropped = LoggerQueue.takeDroppedRows()
+        let sendFailures = LoggerQueue.takeSendFailures()
         let details =
           LoggerUtils.mergeDetails(~data, ~details)
           ->Array.concat(errorDetails)
           ->LoggerUtils.normalizeDetails
           ->Array.concat(dropped > 0 ? [("dropped_rows", dropped->JSON.Encode.int)] : [])
+          ->Array.concat(sendFailures > 0 ? [("send_failures", sendFailures->JSON.Encode.int)] : [])
           ->Array.concat(seen === limit ? [("rate_limited", true->JSON.Encode.bool)] : [])
           ->LoggerUtils.fitToBudget
 
@@ -155,6 +162,8 @@ type tracker = {
   mutable settled: bool,
   mutable timer: option<timeoutId>,
 }
+
+let makeTracker = () => {startedAt: Date.now(), settled: false, timer: None}
 
 let elapsed = tracker => Date.now() -. tracker.startedAt
 
@@ -243,7 +252,7 @@ let observe = (
 ): 'value => {
   let context = LoggerContext.current()
   let base = LoggerUtils.mergeDetails(~data, ~details)
-  let tracker = {startedAt: Date.now(), settled: false, timer: None}
+  let tracker = makeTracker()
   let timedOut = ref(false)
 
   let emitStep = (operationOutcome, ~details=[]) =>
@@ -334,7 +343,7 @@ let observeResource = (
   ~onError,
 ) => {
   let context = LoggerContext.current()
-  let tracker = {startedAt: Date.now(), settled: false, timer: None}
+  let tracker = makeTracker()
 
   let base = [
     ("url", url->JSON.Encode.string),
@@ -343,12 +352,13 @@ let observeResource = (
     ("deduped", dedupe->JSON.Encode.bool),
   ]
 
-  let emitStep = operationOutcome =>
+  let emitStep = (operationOutcome, ~details=[]) =>
     operationOutcome->emitOutcome(
       ~category=Resource,
       ~spec,
       ~severity,
       ~data=base,
+      ~details,
       ~paymentMethod?,
       ~context,
     )
@@ -370,9 +380,12 @@ let observeResource = (
     }
 
   tracker.timer = Some(setTimeout(() =>
-      if tracker->settle && !abandoned() {
+      if tracker->settle {
         start()
-        emitStep(OpTimedOut({durationMs: tracker->elapsed, timeoutMs}))
+        emitStep(
+          OpTimedOut({durationMs: tracker->elapsed, timeoutMs}),
+          ~details=abandoned() ? [("abandoned", true->JSON.Encode.bool)] : [],
+        )
       }
     , timeoutMs))
 

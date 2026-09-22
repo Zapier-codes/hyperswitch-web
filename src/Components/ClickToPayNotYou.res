@@ -111,6 +111,10 @@ let make = (~setIsShowClickToPayNotYou, ~isCTPAuthenticateNotYouClicked, ~getVis
     let newValue = target["value"]
     let formattedValue =
       identifierType === MOBILE_PHONE_NUMBER ? newValue->formatPhoneNumber : newValue
+    SdkLogger.logUser(
+      ~event=FieldEdited({field: "click_to_pay_identifier"}),
+      ~paymentMethod=Card(Unspecified),
+    )
     setIdentifier(_ => formattedValue)
   }
 
@@ -130,6 +134,10 @@ let make = (~setIsShowClickToPayNotYou, ~isCTPAuthenticateNotYouClicked, ~getVis
   let handlePhoneInputChange = ev => {
     let target = ev->ReactEvent.Form.target
     let newValue = target["value"]->String.replaceRegExp(/\\D/g, "")
+    SdkLogger.logUser(
+      ~event=FieldEdited({field: "click_to_pay_identifier"}),
+      ~paymentMethod=Card(Unspecified),
+    )
     setIdentifier(_ => newValue)
   }
 

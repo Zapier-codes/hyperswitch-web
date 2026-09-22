@@ -65,6 +65,35 @@ let setPaymentMethod = paymentMethod =>
 let paymentIdOfClientSecret = clientSecret =>
   clientSecret->String.split("_secret_")->Array.get(0)->Option.getOr("")
 
+let paymentIdOfSdkAuthorization = sdkAuthorization =>
+  try {
+    sdkAuthorization
+    ->Window.atob
+    ->String.split(",")
+    ->Array.findMap(entry => {
+      let prefix = "payment_id="
+      entry->String.startsWith(prefix)
+        ? switch entry->String.sliceToEnd(~start=prefix->String.length) {
+          | "" => None
+          | value => Some(value)
+          }
+        : None
+    })
+  } catch {
+  | _ => None
+  }
+
+let setPaymentIdFromCredentials = (~clientSecret="", ~sdkAuthorization=?) => {
+  let paymentId = switch sdkAuthorization->Option.flatMap(paymentIdOfSdkAuthorization) {
+  | Some(paymentId) => paymentId
+  | None => clientSecret->paymentIdOfClientSecret
+  }
+  switch paymentId->String.trim {
+  | "" => ()
+  | paymentId => setSessionData(~paymentId, ())
+  }
+}
+
 let setPaymentIdFromClientSecret = clientSecret =>
   switch clientSecret->String.trim {
   | "" => ()
@@ -93,11 +122,17 @@ let readField = (message, key) =>
   ->Option.getOr("")
 
 let startSessionFromMessage = message =>
-  LoggerUtils.safeRun(() =>
+  LoggerUtils.safeRun(() => {
+    let paymentId = switch message
+    ->readField("sdkAuthorization")
+    ->paymentIdOfSdkAuthorization {
+    | Some(paymentId) => paymentId
+    | None => message->readField("clientSecret")->paymentIdOfClientSecret
+    }
     setSessionData(
       ~sessionId=message->readField("sdkSessionId"),
       ~merchantId=message->readField("publishableKey"),
-      ~paymentId=message->readField("clientSecret")->paymentIdOfClientSecret,
+      ~paymentId,
       (),
     )
-  )
+  })

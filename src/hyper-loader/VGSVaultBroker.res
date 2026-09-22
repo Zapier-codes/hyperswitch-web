@@ -363,6 +363,11 @@ let dispatchFieldEvent = (
         `[VGSVaultBroker] merchant on("${event}") handler threw`,
         exn->Identity.anyTypeToJson,
       )
+      SdkLogger.logCrash(
+        ~origin=ParentWindowMessage,
+        ~exn,
+        ~details=[("callback", event->JSON.Encode.string)],
+      )
     }
   )
 }
@@ -424,6 +429,12 @@ let make = (
         Console.error2(
           `[VGSVaultBroker] clear(${entry.fieldType}) threw`,
           exn->Identity.anyTypeToJson,
+        )
+        SdkLogger.logLifecycle(
+          ~event=VaultFlowFailed({reason: FieldUpdateFailed}),
+          ~exn,
+          ~details=[("field", entry.fieldType->JSON.Encode.string)],
+          ~paymentMethod=Card(Unspecified),
         )
       }
     | None => ()

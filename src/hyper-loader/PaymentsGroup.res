@@ -505,6 +505,10 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
         switch mapFieldTypeToInternalFieldName(fieldType) {
         | "" => {
             Console.error(`[PaymentsGroup] invalid_field_type: ${fieldType}`)
+            HyperLoaderLogger.logMerchantIssue(
+              ~issue=MalformedValue,
+              ~details=[("field", fieldType->JSON.Encode.string)],
+            )
             Types.defaultFieldHandle
           }
         | _ =>
@@ -552,7 +556,9 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
     } else {
       HyperLoaderLogger.observeMerchantCall(
         ~event=HyperLoaderLogger.CardForm(Update),
-        ~details=[("field_count", fieldsRef.contents->Dict.valuesToArray->Array.length->JSON.Encode.int)],
+        ~details=[
+          ("field_count", fieldsRef.contents->Dict.valuesToArray->Array.length->JSON.Encode.int),
+        ],
         ~call=() =>
           fieldsRef.contents
           ->Dict.valuesToArray

@@ -663,7 +663,7 @@ let useEmitPaymentMethodInfo = (
           ~paymentMethod=finalPaymentMethodType.payment_method,
           ~paymentMethodType=paymentMethodName,
         )
-      | None => ()
+      | None => SdkLogger.logLifecycle(~event=PaymentMethodUnresolved({value: paymentMethodName}))
       }
     }
 

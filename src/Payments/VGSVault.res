@@ -7,15 +7,10 @@ let submitVaultTokenization = (vault: returnValue, ~scope, ~onData) => {
   let startedAt = Date.now()
   let event = SdkLogger.VaultTokenization({scope: scope})
   let details = [("vault", "vgs"->JSON.Encode.string)]
-  SdkLogger.logApi(~event, ~outcome=Started, ~details, ~paymentMethod=Card(Unspecified))
+  let paymentMethod = LoggerTaxonomy.Card(Unspecified)
+  SdkLogger.logApi(~event, ~outcome=Started, ~details, ~paymentMethod)
   let onSuccess = (_, data) => {
-    SdkLogger.logApi(
-      ~event,
-      ~outcome=Done,
-      ~details,
-      ~startedAt,
-      ~paymentMethod=Card(Unspecified),
-    )
+    SdkLogger.logApi(~event, ~outcome=Done, ~details, ~startedAt, ~paymentMethod)
     onData(data)
   }
   let onError = err => {
@@ -25,7 +20,7 @@ let submitVaultTokenization = (vault: returnValue, ~scope, ~onData) => {
       ~details,
       ~startedAt,
       ~exn=err->Identity.anyTypeToJson,
-      ~paymentMethod=Card(Unspecified),
+      ~paymentMethod,
     )
     postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
   }
@@ -312,7 +307,12 @@ let make = (~cvcOnly=false) => {
           }
         }
 
-      | None => Console.error("VGS Vault not initialized for submission")
+      | None =>
+        SdkLogger.logLifecycle(
+          ~event=VaultFlowFailed({reason: FormCreationFailed}),
+          ~details=[("vault", "vgs"->JSON.Encode.string)],
+        )
+        Console.error("VGS Vault not initialized for submission")
       }
     }
   }, (form, localeString, cvcOnly, parentURL))

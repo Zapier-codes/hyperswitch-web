@@ -72,7 +72,7 @@ let make = () => {
 
             let ele = Window.querySelector("#threeDsAuthDiv")
 
-            switch ele->Nullable.toOption {
+            let authEvent: SdkLogger.lifecycleEvent = switch ele->Nullable.toOption {
             | Some(elem) =>
               if transStatus === "C" {
                 setloader(_ => false)
@@ -83,23 +83,14 @@ let make = () => {
                 form.target = "threeDsAuthFrame"
                 form.appendChild(input)
                 form.submit()
-                SdkLogger.logLifecycle(
-                  ~event=ThreeDsChallengeShown({transStatus: transStatus}),
-                  ~paymentMethod=Card(Unspecified),
-                )
+                ThreeDsChallengeShown({transStatus: transStatus})
               } else {
                 handleFrictionLess()
-                SdkLogger.logLifecycle(
-                  ~event=ThreeDsFrictionlessResolved({transStatus: transStatus}),
-                  ~paymentMethod=Card(Unspecified),
-                )
+                ThreeDsFrictionlessResolved({transStatus: transStatus})
               }
-            | None =>
-              SdkLogger.logLifecycle(
-                ~event=ThreeDsAuthContainerMissing({transStatus: transStatus}),
-                ~paymentMethod=Card(Unspecified),
-              )
+            | None => ThreeDsAuthContainerMissing({transStatus: transStatus})
             }
+            SdkLogger.logLifecycle(~event=authEvent, ~paymentMethod=Card(Unspecified))
             resolve(json)
           }
         })

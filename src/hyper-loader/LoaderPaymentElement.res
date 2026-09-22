@@ -122,7 +122,6 @@ let make = (
     }
 
     let registerEventHandler = (eventType, eventHandler) => {
-
       if componentType->Utils.canHaveMultipleInstances && localSelectorRef.contents === "" {
         let mounts = pendingMountSelectorsByType->Dict.get(componentType)->Option.getOr([])
         if mounts->Array.length > 0 {
@@ -131,7 +130,6 @@ let make = (
           pendingMountSelectorsByType->Dict.set(componentType, remaining)
           localSelectorRef := selector
         } else {
-
           let refs = pendingOnRefsByType->Dict.get(componentType)->Option.getOr([])
 
           if !(refs->Array.some(r => r === localSelectorRef)) {
@@ -141,7 +139,6 @@ let make = (
         }
       }
       let matchesInstance = (ev: Types.event) => {
-
         if componentType->Utils.canHaveMultipleInstances {
           ev.data.elementType === componentType && ev.data.iframeId === localSelectorRef.contents
         } else {
@@ -248,7 +245,11 @@ let make = (
           "surchargeInfo",
           `onSurchargeInfo-${componentType}-${elementInstanceId}`,
         )
-      | _ => ()
+      | _ =>
+        HyperLoaderLogger.logMerchantIssue(
+          ~issue=UnknownOptionKey,
+          ~details=[("event", eventType->JSON.Encode.string)],
+        )
       }
     }
     let collapse = () =>
@@ -298,7 +299,7 @@ let make = (
     let containerPresentDetail = () => [
       (
         "container_present",
-        (Window.querySelector(mountId.contents)->Nullable.toOption->Option.isSome)->JSON.Encode.bool,
+        Window.querySelector(mountId.contents)->Nullable.toOption->Option.isSome->JSON.Encode.bool,
       ),
     ]
 
@@ -366,13 +367,11 @@ let make = (
         let refs = pendingOnRefsByType->Dict.get(componentType)->Option.getOr([])
         let emptyIdx = refs->Array.findIndex(r => r.contents === "")
         if emptyIdx >= 0 {
-
           let siblingRef = refs->Array.getUnsafe(emptyIdx)
           siblingRef := localSelectorString
           let remaining = refs->Array.filterWithIndex((_, i) => i !== emptyIdx)
           pendingOnRefsByType->Dict.set(componentType, remaining)
         } else {
-
           let mounts = pendingMountSelectorsByType->Dict.get(componentType)->Option.getOr([])
           mounts->Array.push(localSelectorString)->ignore
           pendingMountSelectorsByType->Dict.set(componentType, mounts)
@@ -599,7 +598,11 @@ let make = (
           }
         }
 
-      | None => ()
+      | None =>
+        HyperLoaderLogger.logMerchantIssue(
+          ~issue=MissingParameter,
+          ~details=[("selector", selector->JSON.Encode.string)],
+        )
       }
     }
 

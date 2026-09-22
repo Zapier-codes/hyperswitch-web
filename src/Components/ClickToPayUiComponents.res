@@ -77,7 +77,12 @@ module OtpInput = {
             await getCards("")
             setResendLoading(_ => false)
           } catch {
-          | _ => setResendLoading(_ => false)
+          | exn =>
+            ClickToPayLogger.logLifecycle(
+              ~event=CardsUnavailable({provider: VisaUctp, code: "otp_resend_failed"}),
+              ~exn,
+            )
+            setResendLoading(_ => false)
           }
         }
         resendOtp()->ignore

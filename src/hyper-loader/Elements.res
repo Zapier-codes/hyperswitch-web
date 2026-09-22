@@ -40,12 +40,12 @@ let make = (
       localOptions->Dict.get("appearance")->Option.getOr(Dict.make()->JSON.Encode.object)
     let launchTime = localOptions->getFloat("launchTime", 0.0)
 
-    let fonts =
+    let decodedFonts =
       localOptions
       ->Dict.get("fonts")
       ->Option.flatMap(JSON.Decode.array)
       ->Option.getOr([])
-      ->JSON.Encode.array
+    let fonts = decodedFonts->JSON.Encode.array
 
     let blockConfirm =
       GlobalVars.isInteg &&
@@ -61,7 +61,9 @@ let make = (
       ->Option.flatMap(JSON.Decode.string)
       ->Option.getOr("")
 
-    if preloadSDKWithParams->Dict.toArray->Array.length > 0 {
+    let isSdkParamsEnabled = preloadSDKWithParams->Dict.toArray->Array.length > 0
+
+    if isSdkParamsEnabled {
       HyperLoaderLogger.logMerchantProps(
         ~event=HyperLoaderLogger.ElementsProp(PreloadSdkWithParams),
         ~details=[
@@ -75,15 +77,16 @@ let make = (
     }
 
     switch localOptions->Dict.get("appearance") {
-    | Some(appearanceValue) =>
-      let appearanceDict = appearanceValue->getDictFromJson
-      HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(Appearance),
-        ~details=[
-          ("theme", appearanceDict->getString("theme", "")->JSON.Encode.string),
-          ("keys", appearanceDict->Dict.keysToArray->Array.length->JSON.Encode.int),
-        ],
-      )
+    | Some(appearanceValue) => {
+        let appearanceDict = appearanceValue->getDictFromJson
+        HyperLoaderLogger.logMerchantProps(
+          ~event=HyperLoaderLogger.ElementsProp(Appearance),
+          ~details=[
+            ("theme", appearanceDict->getString("theme", "")->JSON.Encode.string),
+            ("keys", appearanceDict->Dict.keysToArray->Array.length->JSON.Encode.int),
+          ],
+        )
+      }
     | None => ()
     }
 
@@ -91,9 +94,7 @@ let make = (
     | Some(_) =>
       HyperLoaderLogger.logMerchantProps(
         ~event=HyperLoaderLogger.ElementsProp(Fonts),
-        ~details=[
-          ("count", fonts->JSON.Decode.array->Option.getOr([])->Array.length->JSON.Encode.int),
-        ],
+        ~details=[("count", decodedFonts->Array.length->JSON.Encode.int)],
       )
     | None => ()
     }
@@ -151,8 +152,6 @@ let make = (
     let isTaxCalculationEnabled = ref(false)
 
     let paymentElementIframeRef: array<Nullable.t<Dom.element>> = []
-
-    let isSdkParamsEnabled = preloadSDKWithParams->Dict.toArray->Array.length > 0
 
     let (
       initialSessionTokensPromise,
@@ -297,8 +296,10 @@ let make = (
       setIframeRef(ref)
     }
     let getElement = componentName =>
-      HyperLoaderLogger.observeMerchantCall(~event=Elements(GetElement), ~call=() =>
-        savedPaymentElement->Dict.get(componentName)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=Elements(GetElement),
+        ~detailsOf=result => [("found", result->Option.isSome->JSON.Encode.bool)],
+        ~call=() => savedPaymentElement->Dict.get(componentName),
       )
     let updateElementsOptions = newOptions => {
       let newOptionsDict = newOptions->getDictFromJson
@@ -556,7 +557,11 @@ let make = (
                     )
                   }
                 }
-              | None => ()
+              | None =>
+                SdkLogger.logLifecycle(
+                  ~event=WalletFlowFailed({reason: ClientUnavailable}),
+                  ~paymentMethod=Wallet(ApplePay),
+                )
               }
             } else {
               HyperLoaderLogger.logMerchantProps(
@@ -654,15 +659,28 @@ let make = (
                       reject(JsExn.anyToExnInternal(errorMsg))
                     })
 
+                    let postGooglePaySync = () => {
+                      let msg = [("googlePaySyncPayment", true->JSON.Encode.bool)]->Dict.fromArray
+                      event.source->Window.sendPostMessage(msg)
+                    }
+
                     Promise.race([polling, executeGooglePayment, timeOut])
                     ->then(_ => {
-                      let msg = [("googlePaySyncPayment", true->JSON.Encode.bool)]->Dict.fromArray
-                      event.source->Window.sendPostMessage(msg)
+                      SdkLogger.logLifecycle(
+                        ~event=WalletTokenReceived,
+                        ~paymentMethod=Wallet(GooglePay),
+                        ~details=[("flow", "third_party"->JSON.Encode.string)],
+                      )
+                      postGooglePaySync()
                       resolve()
                     })
-                    ->catch(_ => {
-                      let msg = [("googlePaySyncPayment", true->JSON.Encode.bool)]->Dict.fromArray
-                      event.source->Window.sendPostMessage(msg)
+                    ->catch(exn => {
+                      SdkLogger.logLifecycle(
+                        ~event=WalletFlowFailed({reason: PaymentDataFailed, connector}),
+                        ~paymentMethod=Wallet(GooglePay),
+                        ~exn,
+                      )
+                      postGooglePaySync()
                       resolve()
                     })
                     ->ignore
@@ -768,6 +786,11 @@ let make = (
                           ),
                       )
                       ->then(_ => {
+                        SdkLogger.logLifecycle(
+                          ~event=WalletTokenReceived,
+                          ~paymentMethod=Wallet(ApplePay),
+                          ~details=[("flow", "third_party"->JSON.Encode.string)],
+                        )
                         let msg = [("applePaySyncPayment", true->JSON.Encode.bool)]->Dict.fromArray
                         mountedIframeRef->Window.iframePostMessage(msg)
                         ApplePayInterceptor.clearPostToIframe()
@@ -780,7 +803,15 @@ let make = (
                         resolve()
                       })
                     } catch {
-                    | _ => {
+                    | exn => {
+                        SdkLogger.logLifecycle(
+                          ~event=WalletFlowFailed({
+                            reason: ClientCreationFailed,
+                            connector: "trustpay",
+                          }),
+                          ~exn,
+                          ~paymentMethod=Wallet(ApplePay),
+                        )
                         let msg = [("applePaySyncPayment", true->JSON.Encode.bool)]->Dict.fromArray
                         mountedIframeRef->Window.iframePostMessage(msg)
                         ApplePayInterceptor.clearPostToIframe()
@@ -839,6 +870,12 @@ let make = (
             let returnUrl = dict->getString("return_url", "")
             let redirectUrl = `${returnUrl}?payment_intent_client_secret=${clientSecretRef.contents}&status=${status}`
             if redirect.contents === "always" {
+              SdkLogger.logLifecycle(
+                ~event=CustomerRedirectStarted({
+                  nextAction: "poll_retrieve_redirect",
+                  redirectOrigin: "hyper_loader",
+                }),
+              )
               Utils.replaceRootHref(redirectUrl, redirectionFlags)
               resolve(JSON.Encode.null)
             } else {
@@ -860,6 +897,12 @@ let make = (
 
             let handleErrorResponse = err => {
               if redirect.contents === "always" {
+                SdkLogger.logLifecycle(
+                  ~event=CustomerRedirectStarted({
+                    nextAction: "poll_error_redirect",
+                    redirectOrigin: "hyper_loader",
+                  }),
+                )
                 Utils.replaceRootHref(url, redirectionFlags)
               }
               messageCurrentWindow([
@@ -925,6 +968,12 @@ let make = (
             ->then(json => json->handleRetrievePaymentResponse)
             ->catch(err => {
               if redirect.contents === "always" {
+                SdkLogger.logLifecycle(
+                  ~event=CustomerRedirectStarted({
+                    nextAction: "openurl_error_redirect",
+                    redirectOrigin: "hyper_loader",
+                  }),
+                )
                 Utils.replaceRootHref(
                   redirectUrl->JSON.Decode.string->Option.getOr(""),
                   redirectionFlags,

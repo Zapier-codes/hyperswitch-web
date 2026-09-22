@@ -62,13 +62,19 @@ type unknownPaymentMethodData = {value: string}
 type unsupportedConnectorData = {connector: string}
 type paymentStatusUnknownData = {inferred: bool}
 
+type validationFailureData = {reason: string}
+type retryExhaustionData = {operation: string, attempts: int}
+
 type lifecycleEvent =
   | ElementIframeMounted
   | AppRendered
+  | PaymentAttempted
   | PaymentSucceeded(paymentOutcomeData)
   | PaymentFailed(paymentOutcomeData)
   | PaymentRejected
   | PaymentStatusUnknown(paymentStatusUnknownData)
+  | PaymentRetriesExhausted(retryExhaustionData)
+  | FormValidationFailed(validationFailureData)
   | WalletFlowResolved(walletFlowData)
   | WalletStageReached(walletStageData)
   | WalletFlowFailed(walletFailureData)
@@ -87,6 +93,7 @@ type lifecycleEvent =
   | ThreeDsAuthRequestFailed
   | ThreeDsMethodStarted
   | ThreeDsMethodCompleted
+  | ThreeDsMethodSkipped
   | ThreeDsMethodFailed(threeDsMethodFailureData)
   | ThreeDsMethodTimedOut
   | DdcStarted
@@ -94,6 +101,7 @@ type lifecycleEvent =
   | DdcFailed(ddcFailureData)
   | DdcTimedOut
   | QrCodeShown
+  | QrCodeExpired
   | VoucherShown
   | BankTransferShown
   | PaymentMethodUnresolved(unknownPaymentMethodData)
@@ -130,11 +138,10 @@ let vaultFailureSeverity = reason =>
   switch reason {
   | FieldBindingFailed
   | FieldMountFailed
-  | FormCreationFailed =>
-    Error
+  | FormCreationFailed
   | FieldUpdateFailed
   | FieldUnmountFailed =>
-    Warning
+    Error
   }
 
 let lifecycleSeverity = value =>
@@ -145,12 +152,14 @@ let lifecycleSeverity = value =>
   | ThreeDsPopupRequested
   | ThreeDsMethodStarted
   | ThreeDsMethodCompleted
+  | ThreeDsMethodSkipped
   | DdcStarted
   | DdcCompleted
   | CountryDataServedFromBundle
   | EligibilityCheckCancelled =>
     Debug
   | AppRendered
+  | PaymentAttempted
   | PaymentSucceeded(_)
   | PaymentFailed(_)
   | WalletTokenReceived
@@ -167,8 +176,11 @@ let lifecycleSeverity = value =>
   | PaymentMethodUnresolved(_)
   | PaymentStatusUnknown(_)
   | WalletFlowExited
+  | QrCodeExpired
+  | FormValidationFailed(_)
   | EligibilityCheckFailed =>
     Warning
+  | PaymentRetriesExhausted(_) => Error
   | PaymentRejected
   | ThreeDsAuthContainerMissing(_)
   | ThreeDsAuthRequestFailed
@@ -193,6 +205,7 @@ type loaderData = {state: loaderState}
 type clickToPayViewData = {view: string}
 type updateIntentData = {inProgress: bool}
 type formCompletionData = {savedMethod: bool}
+type merchantControlData = {control: string}
 
 type stateEvent =
   | NetworkStatusChanged(networkData)
@@ -202,6 +215,8 @@ type stateEvent =
   | CardFormUnmounted(cardFormData)
   | CardFieldMounted(cardFieldData)
   | CardFieldUnmounted(cardFieldData)
+  | CardCoBadgeDetected
+  | MerchantControlReceived(merchantControlData)
   | DynamicFieldsChanged
   | PaymentFormCompleted(formCompletionData)
   | UpdateIntentProgressChanged(updateIntentData)
@@ -218,6 +233,8 @@ let stateSeverity = value =>
   | CardFormUnmounted(_)
   | CardFieldMounted(_)
   | CardFieldUnmounted(_)
+  | CardCoBadgeDetected
+  | MerchantControlReceived(_)
   | DynamicFieldsChanged
   | PaymentFormCompleted(_)
   | UpdateIntentProgressChanged(_)
@@ -447,6 +464,8 @@ let degradedSeverity = surface =>
   | PaymentMethodPane => Error
   }
 
+let renderedAt = ref(None)
+
 let logLifecycle = (
   ~event: lifecycleEvent,
   ~details=[],
@@ -454,7 +473,16 @@ let logLifecycle = (
   ~failure=?,
   ~durationMs=?,
   ~paymentMethod=?,
-) =>
+) => {
+  switch event {
+  | AppRendered => renderedAt := Some(Date.now())
+  | _ => ()
+  }
+  let durationMs = switch (event, durationMs) {
+  | (PaymentAttempted, None) =>
+    renderedAt.contents->Option.map(startedAt => Date.now() -. startedAt)
+  | _ => durationMs
+  }
   LoggerRuntime.emit(
     ~category=Lifecycle,
     ~spec=event->LoggerUtils.deriveEvent,
@@ -466,6 +494,7 @@ let logLifecycle = (
     ~durationMs?,
     ~paymentMethod?,
   )
+}
 
 let logState = (
   ~event: stateEvent,
@@ -498,26 +527,6 @@ let identify = event =>
   | event => event
   }
 
-let editedFields = ref(("", Set.make()))
-
-let isFirstEditOf = field => {
-  let sessionId = LoggerContext.current().sessionId
-  let (knownSessionId, fields) = editedFields.contents
-  let fields = if knownSessionId === sessionId {
-    fields
-  } else {
-    let fields = Set.make()
-    editedFields := (sessionId, fields)
-    fields
-  }
-  fields->Set.has(field)
-    ? false
-    : {
-        fields->Set.add(field)
-        true
-      }
-}
-
 let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
   let event = event->identify
   switch (event, paymentMethod) {
@@ -526,20 +535,19 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
   | (PaymentMethodSelected(_), Some(paymentMethod)) => LoggerContext.setPaymentMethod(paymentMethod)
   | _ => ()
   }
-  let shouldEmit = switch event {
-  | FieldEdited({field}) => field->isFirstEditOf
-  | _ => true
+  let rateKey = switch event {
+  | FieldEdited({field}) | FieldFocused({field}) | FieldBlurred({field}) => Some(field)
+  | _ => None
   }
-  if shouldEmit {
-    LoggerRuntime.emit(
-      ~category=User,
-      ~spec=event->LoggerUtils.deriveNotification,
-      ~severity=event->userSeverity,
-      ~data=event->LoggerUtils.eventDetails,
-      ~details,
-      ~paymentMethod?,
-    )
-  }
+  LoggerRuntime.emit(
+    ~category=User,
+    ~spec=event->LoggerUtils.deriveNotification,
+    ~severity=event->userSeverity,
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
+    ~paymentMethod?,
+    ~rateKey?,
+  )
 }
 
 let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[]) =>
@@ -610,31 +618,32 @@ let catchGlobalCrashes = (~ownsDocument) => {
 
   let isOurs = source => ownsDocument || source->isSdkFrame
 
-  Window.addEventListener("error", (event: JSON.t) => {
-    let source = event->text("filename")
+  let reportIfOurs = (~origin, ~message, ~source) =>
     if source->isOurs {
       report(
-        ~origin=UncaughtError,
+        ~origin,
         ~details=[
-          ("error_message", event->field("message")->describe->JSON.Encode.string),
+          ("error_message", message->JSON.Encode.string),
           ("error_source", source->JSON.Encode.string),
         ],
       )
     }
-  })
+
+  Window.addEventListener("error", (event: JSON.t) =>
+    reportIfOurs(
+      ~origin=UncaughtError,
+      ~message=event->field("message")->describe,
+      ~source=event->text("filename"),
+    )
+  )
 
   Window.addEventListener("unhandledrejection", (event: JSON.t) => {
     let reason = event->field("reason")
-    let stack = reason->text("stack")
-    if stack->isOurs {
-      report(
-        ~origin=UnhandledRejection,
-        ~details=[
-          ("error_message", reason->describe->JSON.Encode.string),
-          ("error_source", stack->JSON.Encode.string),
-        ],
-      )
-    }
+    reportIfOurs(
+      ~origin=UnhandledRejection,
+      ~message=reason->describe,
+      ~source=reason->text("stack"),
+    )
   })
 }
 

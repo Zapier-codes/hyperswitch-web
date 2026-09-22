@@ -11,6 +11,7 @@ type t = {
   mutable errorPending: bool,
   mutable droppedRows: int,
   mutable failures: int,
+  mutable sendFailures: int,
 }
 
 let queue = {
@@ -20,6 +21,7 @@ let queue = {
   errorPending: false,
   droppedRows: 0,
   failures: 0,
+  sendFailures: 0,
 }
 
 let clearTimer = () =>
@@ -46,13 +48,15 @@ let batchSize = () => {
   let bytes = ref(2)
   let count = ref(0)
   let rows = queue.rows
-  while (
-    count.contents < rows->Array.length &&
-      (count.contents === 0 ||
-        bytes.contents + rows->Array.getUnsafe(count.contents)->rowBytes <= maxBatchBytes)
-  ) {
-    bytes := bytes.contents + rows->Array.getUnsafe(count.contents)->rowBytes
-    count := count.contents + 1
+  let continue = ref(true)
+  while continue.contents && count.contents < rows->Array.length {
+    let next = rows->Array.getUnsafe(count.contents)->rowBytes
+    if count.contents === 0 || bytes.contents + next <= maxBatchBytes {
+      bytes := bytes.contents + next
+      count := count.contents + 1
+    } else {
+      continue := false
+    }
   }
   count.contents
 }
@@ -82,6 +86,8 @@ let requeue = batch => {
   }
 }
 
+let maxSendAttemptsPerBatch = 8
+
 let rec flush = () => {
   clearTimer()
   queue.errorPending = false
@@ -93,7 +99,13 @@ let rec flush = () => {
         queue.failures = 0
       } else {
         queue.failures = queue.failures + 1
-        batch->requeue
+        queue.sendFailures = queue.sendFailures + 1
+        if queue.failures >= maxSendAttemptsPerBatch {
+          queue.failures = 0
+          queue.droppedRows = queue.droppedRows + batch->Array.length
+        } else {
+          batch->requeue
+        }
       }
       recountBytes()
       queue.rows->Array.length > 0 ? scheduleFlush() : ()
@@ -127,6 +139,12 @@ let takeDroppedRows = () => {
   let dropped = queue.droppedRows
   queue.droppedRows = 0
   dropped
+}
+
+let takeSendFailures = () => {
+  let failures = queue.sendFailures
+  queue.sendFailures = 0
+  failures
 }
 
 Window.addEventListener("visibilitychange", _ =>

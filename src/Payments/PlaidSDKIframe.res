@@ -58,22 +58,22 @@ let make = () => {
       let return_url = dict->getString("return_url", "")
 
       switch status {
-      | "succeeded" | "requires_customer_action" | "processing" =>
-        postSubmitResponse(~jsonData=json, ~url=return_url)
-      | "failed" =>
-        SdkLogger.logLifecycle(
-          ~event=BankAuthSyncFailed({status: status}),
-          ~paymentMethod=OpenBanking(Plaid),
-        )
-        postFailedSubmitResponse(
-          ~errortype="confirm_payment_failed",
-          ~message="Payment failed. Try again!",
-        )
+      | "succeeded" | "requires_customer_action" | "processing" => ()
       | _ =>
         SdkLogger.logLifecycle(
           ~event=BankAuthSyncFailed({status: status}),
           ~paymentMethod=OpenBanking(Plaid),
         )
+      }
+      switch status {
+      | "succeeded" | "requires_customer_action" | "processing" =>
+        postSubmitResponse(~jsonData=json, ~url=return_url)
+      | "failed" =>
+        postFailedSubmitResponse(
+          ~errortype="confirm_payment_failed",
+          ~message="Payment failed. Try again!",
+        )
+      | _ =>
         postFailedSubmitResponse(
           ~errortype="sync_payment_failed",
           ~message="Payment is processing. Try again later!",
@@ -92,11 +92,7 @@ let make = () => {
 
   let initializePlaid = () => {
     let startedAt = Date.now()
-    SdkLogger.logFunction(
-      ~event=PlaidCreate,
-      ~outcome=Started,
-      ~paymentMethod=OpenBanking(Plaid),
-    )
+    SdkLogger.logFunction(~event=PlaidCreate, ~outcome=Started, ~paymentMethod=OpenBanking(Plaid))
     Plaid.create({
       token: linkToken,
       onLoad: _ =>

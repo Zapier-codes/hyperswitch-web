@@ -280,7 +280,9 @@ let performUpdateIntent = async (
   ~isSdkParamsEnabled,
   ~selectorString,
   ~shouldWaitForReady,
-  ~merchantEvent: HyperLoaderLogger.merchantCallEvent=HyperLoaderLogger.PaymentSession(UpdateIntent),
+  ~merchantEvent: HyperLoaderLogger.merchantCallEvent=HyperLoaderLogger.PaymentSession(
+    UpdateIntent,
+  ),
 ) => {
   if isUpdateIntentInProgress.contents {
     updateIntentInProgressResponse()
@@ -348,6 +350,8 @@ let performUpdateIntent = async (
             ~newClientSecret=clientSecretRef.contents,
           )
 
+          SdkLogger.logState(~event=UpdateIntentProgressChanged({inProgress: true}))
+
           // Wait for the payment element to signal ready (only if a payment element is mounted)
           let readyPromise = if shouldWaitForReady {
             Some(waitForReady())
@@ -387,6 +391,7 @@ let performUpdateIntent = async (
       ~call=runUpdateIntent,
     )
     isUpdateIntentInProgress.contents = false
+    SdkLogger.logState(~event=UpdateIntentProgressChanged({inProgress: false}))
     response
   }
 }

@@ -94,9 +94,15 @@ let intentCall = (
           },
         )->then(resolve)
       })
-      ->catch(_ => {
+      ->catch(err => {
         Promise.make(
           (resolve, _) => {
+            SdkLogger.logApi(
+              ~event=apiEvent,
+              ~outcome=Failed,
+              ~exn=err,
+              ~details=[("failure", "unreadable_error_response"->JSON.Encode.string)],
+            )
             if !isPaymentSession {
               closePaymentLoaderIfAny()
               postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
@@ -203,14 +209,11 @@ let intentCall = (
                 status: intent.authenticationDetails.status,
               }
               switch intent.authenticationDetails.status {
-              | "succeeded" =>
+              | "succeeded" | "failed" =>
                 SdkLogger.logLifecycle(
-                  ~event=PaymentSucceeded(outcome),
-                  ~paymentMethod=?loggedPaymentMethod,
-                )
-              | "failed" =>
-                SdkLogger.logLifecycle(
-                  ~event=PaymentFailed(outcome),
+                  ~event=intent.authenticationDetails.status === "succeeded"
+                    ? PaymentSucceeded(outcome)
+                    : PaymentFailed(outcome),
                   ~paymentMethod=?loggedPaymentMethod,
                 )
               | _ => ()
@@ -229,9 +232,10 @@ let intentCall = (
       })
     }
   })
-  ->catch(_ => {
+  ->catch(err => {
     Promise.make((resolve, _) => {
       try {
+        SdkLogger.logApi(~event=apiEvent, ~outcome=Failed, ~exn=err)
         let url = makeUrl(confirmParam.return_url)
         url.searchParams.set("status", "failed")
 
@@ -249,7 +253,8 @@ let intentCall = (
           resolve(failedSubmitResponse)
         }
       } catch {
-      | _ =>
+      | exn =>
+        SdkLogger.logApi(~event=apiEvent, ~outcome=Failed, ~exn)
         if !isPaymentSession {
           postFailedSubmitResponse(~errortype="error", ~message="Something went wrong")
         }
@@ -264,55 +269,33 @@ let intentCall = (
 }
 
 let fetchPaymentManagementList = (~pmSessionId, ~endpoint, ~customPodUri, ~sdkAuthorization) => {
-  open Promise
-  let headers = [("Authorization", sdkAuthorization)]
+  let headers = [("Authorization", sdkAuthorization)]->Dict.fromArray
   let uri = `${endpoint}/v1/payment-method-sessions/${pmSessionId}/list-payment-methods`
 
-  SdkLogger.observeApi(~event=PaymentMethodsList, ~url=uri, ~call=() =>
-    fetchApi(uri, ~method=#GET, ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri))
+  fetchApiWithLogging(
+    uri,
+    ~event=PaymentMethodsList,
+    ~method=#GET,
+    ~headers,
+    ~customPodUri=Some(customPodUri),
+    ~onSuccess=data => data,
+    ~onFailure=_ => JSON.Encode.null,
   )
-  ->then(res => {
-    if !(res->Fetch.Response.ok) {
-      res
-      ->Fetch.Response.json
-      ->then(_ => {
-        JSON.Encode.null->resolve
-      })
-    } else {
-      res->Fetch.Response.json
-    }
-  })
-  ->catch(err => {
-    let exceptionMessage = err->formatException
-    Console.error2("Error ", exceptionMessage)
-    JSON.Encode.null->resolve
-  })
 }
 
 let retrievePaymentMethodSession = (~pmSessionId, ~endpoint, ~customPodUri, ~sdkAuthorization) => {
-  open Promise
-  let headers = [("Authorization", sdkAuthorization)]
+  let headers = [("Authorization", sdkAuthorization)]->Dict.fromArray
   let uri = `${endpoint}/v1/payment-method-sessions/${pmSessionId}`
 
-  SdkLogger.observeApi(~event=RetrievePaymentMethodSession, ~url=uri, ~call=() =>
-    fetchApi(uri, ~method=#GET, ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri))
+  fetchApiWithLogging(
+    uri,
+    ~event=RetrievePaymentMethodSession,
+    ~method=#GET,
+    ~headers,
+    ~customPodUri=Some(customPodUri),
+    ~onSuccess=data => data,
+    ~onFailure=_ => JSON.Encode.null,
   )
-  ->then(res => {
-    if !(res->Fetch.Response.ok) {
-      res
-      ->Fetch.Response.json
-      ->then(_ => {
-        JSON.Encode.null->resolve
-      })
-    } else {
-      res->Fetch.Response.json
-    }
-  })
-  ->catch(err => {
-    let exceptionMessage = err->formatException
-    Console.error2("Error ", exceptionMessage)
-    JSON.Encode.null->resolve
-  })
 }
 
 let deletePaymentMethodV2 = (
@@ -321,76 +304,39 @@ let deletePaymentMethodV2 = (
   ~customPodUri,
   ~sdkAuthorization,
 ) => {
-  open Promise
   let endpoint = ApiEndpoint.getApiEndPoint()
-  let headers = [("Authorization", sdkAuthorization)]
+  let headers = [("Authorization", sdkAuthorization)]->Dict.fromArray
   let uri = `${endpoint}/v1/payment-method-sessions/${pmSessionId}`
-  SdkLogger.observeApi(
+
+  fetchApiWithLogging(
+    uri,
     ~event=DeletePaymentMethod,
-    ~url=uri,
-    ~details=[("http_method", "delete"->JSON.Encode.string)],
-    ~call=() =>
-      fetchApi(
-        uri,
-        ~method=#DELETE,
-        ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
-        ~bodyStr=[("payment_method_token", paymentMethodToken->JSON.Encode.string)]
-        ->getJsonFromArrayOfJson
-        ->JSON.stringify,
-      ),
+    ~method=#DELETE,
+    ~headers,
+    ~bodyStr=[("payment_method_token", paymentMethodToken->JSON.Encode.string)]
+    ->getJsonFromArrayOfJson
+    ->JSON.stringify,
+    ~customPodUri=Some(customPodUri),
+    ~onSuccess=data => data,
+    ~onFailure=_ => JSON.Encode.null,
   )
-  ->then(resp => {
-    if !(resp->Fetch.Response.ok) {
-      resp
-      ->Fetch.Response.json
-      ->then(_ => {
-        JSON.Encode.null->resolve
-      })
-    } else {
-      Fetch.Response.json(resp)
-    }
-  })
-  ->catch(err => {
-    let exceptionMessage = err->formatException
-    Console.error2("Error ", exceptionMessage)
-    JSON.Encode.null->resolve
-  })
 }
 
 let updatePaymentMethod = (~bodyArr, ~pmSessionId, ~customPodUri, ~sdkAuthorization) => {
-  open Promise
   let endpoint = ApiEndpoint.getApiEndPoint()
-  let headers = [("Authorization", sdkAuthorization)]
+  let headers = [("Authorization", sdkAuthorization)]->Dict.fromArray
   let uri = `${endpoint}/v1/payment-method-sessions/${pmSessionId}/update-saved-payment-method`
 
-  SdkLogger.observeApi(
+  fetchApiWithLogging(
+    uri,
     ~event=UpdatePaymentMethod,
-    ~url=uri,
-    ~details=[("http_method", "put"->JSON.Encode.string)],
-    ~call=() =>
-      fetchApi(
-        uri,
-        ~method=#PUT,
-        ~bodyStr=bodyArr->getJsonFromArrayOfJson->JSON.stringify,
-        ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri),
-      ),
+    ~method=#PUT,
+    ~headers,
+    ~bodyStr=bodyArr->getJsonFromArrayOfJson->JSON.stringify,
+    ~customPodUri=Some(customPodUri),
+    ~onSuccess=data => data,
+    ~onFailure=_ => JSON.Encode.null,
   )
-  ->then(resp => {
-    if !(resp->Fetch.Response.ok) {
-      resp
-      ->Fetch.Response.json
-      ->then(_ => {
-        JSON.Encode.null->resolve
-      })
-    } else {
-      Fetch.Response.json(resp)
-    }
-  })
-  ->catch(err => {
-    let exceptionMessage = err->formatException
-    Console.error2("Error ", exceptionMessage)
-    JSON.Encode.null->resolve
-  })
 }
 
 let useSaveCard = (paymentType: payment) => {
@@ -510,37 +456,17 @@ let useUpdateCard = (paymentType: payment) => {
 }
 
 let savePaymentMethod = (~bodyArr, ~pmSessionId, ~sdkAuthorization) => {
-  open Promise
   let endpoint = ApiEndpoint.getApiEndPoint()
-  let headers = [("Authorization", sdkAuthorization)]
+  let headers = [("Authorization", sdkAuthorization)]->Dict.fromArray
   let uri = `${endpoint}/v1/payment-method-sessions/${pmSessionId}/confirm`
 
-  SdkLogger.observeApi(
+  fetchApiWithLogging(
+    uri,
     ~event=SavePaymentMethod,
-    ~url=uri,
-    ~details=[("http_method", "post"->JSON.Encode.string)],
-    ~call=() =>
-      fetchApi(
-        uri,
-        ~method=#POST,
-        ~bodyStr=bodyArr->getJsonFromArrayOfJson->JSON.stringify,
-        ~headers=headers->ApiEndpoint.addCustomPodHeader(~customPodUri=""),
-      ),
+    ~method=#POST,
+    ~headers,
+    ~bodyStr=bodyArr->getJsonFromArrayOfJson->JSON.stringify,
+    ~onSuccess=data => data,
+    ~onFailure=_ => JSON.Encode.null,
   )
-  ->then(resp => {
-    if !(resp->Fetch.Response.ok) {
-      resp
-      ->Fetch.Response.json
-      ->then(_ => {
-        JSON.Encode.null->resolve
-      })
-    } else {
-      Fetch.Response.json(resp)
-    }
-  })
-  ->catch(err => {
-    let exceptionMessage = err->formatException
-    Console.error2("Error ", exceptionMessage)
-    JSON.Encode.null->resolve
-  })
 }

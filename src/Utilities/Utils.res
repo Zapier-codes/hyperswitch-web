@@ -1146,16 +1146,22 @@ let fetchApiWithLogging = async (
   ~signal: option<Fetch.AbortSignal.t>=?,
 ) => {
   try {
-    let response = await SdkLogger.observeApi(
-      ~event,
-      ~url=uri,
+    let (response, data) = await LoggerRuntime.observe(
+      ~category=Api,
+      ~spec=event->SdkLogger.apiSpec,
+      ~severity=event->SdkLogger.apiSeverity,
+      ~data=event
+      ->LoggerUtils.eventDetails
+      ->Array.concat([("url", uri->JSON.Encode.string)]),
       ~details=bodyStr->LoggerUtils.payloadDetails,
-      ~call=() => {
+      ~failureOf=LoggerUtils.httpBodyFailure,
+      ~detailsOf=LoggerUtils.httpBodyDetails,
+      ~call=async () => {
         let body = switch method {
         | #GET => None
         | _ => Some(Fetch.Body.string(bodyStr))
         }
-        Fetch.fetch(
+        let response = await Fetch.fetch(
           uri,
           {
             method,
@@ -1170,9 +1176,10 @@ let fetchApiWithLogging = async (
             ),
           },
         )
+        let data = await response->Fetch.Response.json
+        (response, data)
       },
     )
-    let data = await response->Fetch.Response.json
     response->Fetch.Response.ok ? onSuccess(data) : onFailure(data)
   } catch {
   | err => {

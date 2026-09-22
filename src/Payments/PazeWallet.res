@@ -90,7 +90,7 @@ let make = () => {
             } catch {
             | err =>
               SdkLogger.logLifecycle(
-                ~event=WalletFlowExited,
+                ~event=WalletFlowFailed({reason: PaymentDataFailed}),
                 ~paymentMethod=Wallet(Paze),
                 ~exn=err,
               )

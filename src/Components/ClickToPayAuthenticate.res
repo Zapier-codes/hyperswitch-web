@@ -92,6 +92,7 @@ let make = (
                         let errException = err->formatException
                         ClickToPayLogger.logLifecycle(
                           ~event=ProviderUnavailable({provider: MastercardUctp}),
+                          ~details=[("context", "authenticate_result"->JSON.Encode.string)],
                           ~exn=err,
                         )
                         let exceptionMessage =
@@ -116,7 +117,11 @@ let make = (
                       }
                     }
                   })
-                  ->catch(_ => {
+                  ->catch(err => {
+                    ClickToPayLogger.logLifecycle(
+                      ~event=ProviderUnavailable({provider: MastercardUctp}),
+                      ~exn=err,
+                    )
                     closeComponentIfSavedMethodsAreEmpty()
                     resolve()
                   })
@@ -128,7 +133,12 @@ let make = (
           | None => ()
           }
         } catch {
-        | _ => closeComponentIfSavedMethodsAreEmpty()
+        | exn =>
+          ClickToPayLogger.logLifecycle(
+            ~event=ProviderUnavailable({provider: MastercardUctp}),
+            ~exn,
+          )
+          closeComponentIfSavedMethodsAreEmpty()
         }
       } else if isClickToPayAuthenticateError {
         closeComponentIfSavedMethodsAreEmpty()
@@ -176,7 +186,7 @@ let make = (
       ->Array.mapWithIndex((obj, i) => {
         let customerMethod =
           obj->PaymentType.convertClickToPayCardToCustomerMethod(clickToPayProvider)
-        let selectionDetails = [
+        let logSelectionDetails = [
           ("card_brand", obj.paymentCardDescriptor->JSON.Encode.string),
           ("card_index", i->JSON.Encode.int),
           ("list_source", "click_to_pay"->JSON.Encode.string),
@@ -184,7 +194,7 @@ let make = (
         <SavedCardItem
           key={"ctp_" ++ i->Int.toString}
           setPaymentToken
-          selectionDetails
+          logSelectionDetails
           isActive={paymentTokenVal == customerMethod.paymentToken}
           paymentItem=customerMethod
           brandIcon={customerMethod->CardUtils.getPaymentMethodBrand}

@@ -18,7 +18,10 @@ let make = (~cvcProps: CardUtils.cvcProps) => {
   let complete = isCVCValid->Option.getOr(false) && paymentTokenAtom.paymentToken !== ""
   let isEmpty = cvcNumber == ""
 
-  let setUserError = message => postFailedSubmitResponse(~errortype="validation_error", ~message)
+  let setUserError = message => {
+    SdkLogger.logLifecycle(~event=FormValidationFailed({reason: message}))
+    postFailedSubmitResponse(~errortype="validation_error", ~message)
+  }
 
   let updateSavedMethodV2 = (
     savedMethods: array<UnifiedPaymentsTypesV2.customerMethods>,

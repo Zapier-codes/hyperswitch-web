@@ -213,6 +213,7 @@ let rec pollRetrievePaymentIntent = (
   })
   ->catch(e => {
     Console.error2("Unable to retrieve payment due to following error", e)
+    SdkLogger.logApi(~event=RetrievePaymentIntent, ~outcome=Failed, ~exn=e)
     pollRetrievePaymentIntent(
       clientSecret,
       ~headers,
@@ -273,6 +274,12 @@ let rec pollStatus = (
       if status === "completed" {
         resolve(json)
       } else if count === 0 {
+        SdkLogger.logLifecycle(
+          ~event=CustomerRedirectStarted({
+            nextAction: "poll_exhausted",
+            redirectOrigin: "poll_status",
+          }),
+        )
         messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
         openUrl(returnUrl)
       } else {
@@ -302,6 +309,7 @@ let rec pollStatus = (
   })
   ->catch(e => {
     Console.error2("Unable to retrieve payment due to following error", e)
+    SdkLogger.logApi(~event=PollStatus, ~outcome=Failed, ~exn=e)
     pollStatus(
       ~publishableKey,
       ~customPodUri,
@@ -441,10 +449,19 @@ let rec intentCall = (
           },
         )->then(resolve)
       })
-      ->catch(_ => {
+      ->catch(err => {
         Promise.make(
           (resolve, _) => {
+            SdkLogger.logApi(
+              ~event=apiEvent,
+              ~outcome=Failed,
+              ~exn=err,
+              ~details=[("failure", "unreadable_error_response"->JSON.Encode.string)],
+            )
             if counter >= 5 {
+              SdkLogger.logLifecycle(
+                ~event=PaymentRetriesExhausted({operation: "retrieve", attempts: counter}),
+              )
               if !isPaymentSession {
                 closePaymentLoaderIfAny()
                 postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
@@ -702,6 +719,10 @@ let rec intentCall = (
                     ("metadata", metaData->JSON.Encode.object),
                   ])
                 } else {
+                  SdkLogger.logLifecycle(
+                    ~event=ThreeDsMethodSkipped,
+                    ~paymentMethod=?loggedPaymentMethod,
+                  )
                   metaData->Dict.set("3dsMethodComp", "U"->JSON.Encode.string)
                   messageParentWindow([
                     ("fullscreen", true->JSON.Encode.bool),
@@ -814,7 +835,13 @@ let rec intentCall = (
                       ("metadata", metaData),
                     ]
                   }
-                | _ => []
+                | _ => {
+                    SdkLogger.logLifecycle(
+                      ~event=PaymentMethodUnresolved({value: walletName}),
+                      ~paymentMethod=?loggedPaymentMethod,
+                    )
+                    []
+                  }
                 }
 
                 if !isPaymentSession {
@@ -889,7 +916,13 @@ let rec intentCall = (
                     ]
                   }
                 | "google_pay" => [("googlePayThirdPartyFlow", session_token->anyTypeToJson)]
-                | _ => []
+                | _ => {
+                    SdkLogger.logLifecycle(
+                      ~event=PaymentMethodUnresolved({value: walletName}),
+                      ~paymentMethod=?loggedPaymentMethod,
+                    )
+                    []
+                  }
                 }
 
                 if !isPaymentSession {
@@ -952,6 +985,9 @@ let rec intentCall = (
         )
         url.searchParams.set("status", "failed")
         if counter >= 5 {
+          SdkLogger.logLifecycle(
+            ~event=PaymentRetriesExhausted({operation: "retrieve", attempts: counter}),
+          )
           if !isPaymentSession {
             closePaymentLoaderIfAny()
             postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
@@ -1006,7 +1042,8 @@ let rec intentCall = (
           ->ignore
         }
       } catch {
-      | _ =>
+      | exn =>
+        SdkLogger.logApi(~event=apiEvent, ~outcome=Failed, ~exn)
         if !isPaymentSession {
           postFailedSubmitResponse(~errortype="error", ~message="Something went wrong")
         }
@@ -1304,6 +1341,10 @@ let usePaymentIntent = paymentType => {
             headers->Dict.fromArray->Identity.anyTypeToJson->JSON.stringify,
           )
         } else {
+          SdkLogger.logLifecycle(
+            ~event=PaymentAttempted,
+            ~details=[("content_length", body->String.length->JSON.Encode.int)],
+          )
           intentCall(
             ~fetchApi,
             ~uri,
@@ -1940,6 +1981,10 @@ let usePostSessionTokens = (
           ->Option.forEach(LoggerContext.setPaymentMethod)
         }
 
+        SdkLogger.logLifecycle(
+          ~event=PaymentAttempted,
+          ~details=[("content_length", body->String.length->JSON.Encode.int)],
+        )
         intentCall(
           ~fetchApi,
           ~uri,

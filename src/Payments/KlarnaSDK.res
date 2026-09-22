@@ -68,17 +68,11 @@ let make = (~sessionObj: SessionsType.token) => {
     if status === "ready" && paymentMethodTypes !== PaymentMethodsRecord.defaultPaymentMethodType {
       let klarnaWrapper = GooglePayType.getElementById(Utils.document, "klarna-payments")
       klarnaWrapper.innerHTML = ""
-      let initStartedAt = Date.now()
-      SdkLogger.logFunction(~event=KlarnaInit, ~outcome=Started, ~paymentMethod=PayLater(Klarna))
-      klarnaInit.init({
-        client_token: sessionObj.token,
-      })
-      SdkLogger.logFunction(
-        ~event=KlarnaInit,
-        ~outcome=Done,
-        ~startedAt=initStartedAt,
-        ~paymentMethod=PayLater(Klarna),
-      )
+      SdkLogger.observeFunction(~event=KlarnaInit, ~paymentMethod=PayLater(Klarna), ~call=() =>
+        klarnaInit.init({
+          client_token: sessionObj.token,
+        })
+      )->ignore
 
       let loadStartedAt = Date.now()
       SdkLogger.logFunction(~event=KlarnaLoad, ~outcome=Started, ~paymentMethod=PayLater(Klarna))
@@ -88,16 +82,15 @@ let make = (~sessionObj: SessionsType.token) => {
           theme: options.wallets.style.theme == Dark ? "default" : "outlined",
           shape: "default",
           on_click: authorize => {
+            SdkLogger.logUser(
+              ~event=ExpressCheckoutClicked,
+              ~paymentMethod=PayLater(Klarna),
+              ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+            )
             if isTestMode {
               Console.warn("Klarna SDK button clicked in test mode - interaction disabled")
-              SdkLogger.logUser(
-                ~event=ExpressCheckoutClicked,
-                ~paymentMethod=PayLater(Klarna),
-                ~details=[("test_mode", true->JSON.Encode.bool)],
-              )
               resolve()
             } else {
-              SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=PayLater(Klarna))
               PaymentUtils.emitPaymentMethodInfo(
                 ~paymentMethod="wallet",
                 ~paymentMethodType,
@@ -173,23 +166,13 @@ let make = (~sessionObj: SessionsType.token) => {
         },
         loadResult => {
           let loadError = loadResult->getDictFromJson->Dict.get("error")
-          switch loadError {
-          | Some(error) =>
-            SdkLogger.logFunction(
-              ~event=KlarnaLoad,
-              ~outcome=Failed,
-              ~startedAt=loadStartedAt,
-              ~exn=error->Identity.anyTypeToJson,
-              ~paymentMethod=PayLater(Klarna),
-            )
-          | None =>
-            SdkLogger.logFunction(
-              ~event=KlarnaLoad,
-              ~outcome=Done,
-              ~startedAt=loadStartedAt,
-              ~paymentMethod=PayLater(Klarna),
-            )
-          }
+          SdkLogger.logFunction(
+            ~event=KlarnaLoad,
+            ~outcome=loadError->Option.isSome ? Failed : Done,
+            ~startedAt=loadStartedAt,
+            ~exn=?loadError->Option.map(Identity.anyTypeToJson),
+            ~paymentMethod=PayLater(Klarna),
+          )
           setAreOneClickWalletsRendered(
             prev => {
               ...prev,

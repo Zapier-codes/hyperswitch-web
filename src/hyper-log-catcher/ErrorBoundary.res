@@ -136,6 +136,14 @@ module ErrorCard = {
       let details = [
         ("component", componentName->JSON.Encode.string),
         ("boundary_level", level->LoggerUtils.variantName->JSON.Encode.string),
+        (
+          "component_stack",
+          error.componentStack
+          ->Identity.anyTypeToJson
+          ->JSON.stringify
+          ->String.slice(~start=0, ~end=2048)
+          ->JSON.Encode.string,
+        ),
       ]
       let exn = error.error->Exn.anyToExnInternal
       switch level {

@@ -2,6 +2,18 @@ open PaypalSDKTypes
 open Utils
 open TaxCalculation
 
+let observePaypalButtonsRender = (paypalButtons: some, ~details=[]) =>
+  try {
+    SdkLogger.observeFunction(
+      ~event=PaypalButtonsRender,
+      ~details,
+      ~paymentMethod=Wallet(PaypalSdk),
+      ~call=() => paypalButtons.render("#paypal-button"),
+    )->ignore
+  } catch {
+  | _ => ()
+  }
+
 let loadPaypalSDK = (
   ~sdkHandleOneClickConfirmPayment as _,
   ~buttonStyle: PaypalSDKTypes.style,
@@ -233,24 +245,22 @@ let loadPaypalSDK = (
       }
     },
     onCancel: _data => {
+      SdkLogger.logUser(~event=ExpressCheckoutDismissed, ~paymentMethod=Wallet(PaypalSdk))
       handleCloseLoader()
     },
-    onError: _err => {
+    onError: err => {
+      SdkLogger.logLifecycle(
+        ~event=WalletFlowFailed({reason: PaymentDataFailed}),
+        ~paymentMethod=Wallet(PaypalSdk),
+        ~exn=err->Exn.anyToExnInternal,
+      )
       handleCloseLoader()
     },
     onClick: () => {
       SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(PaypalSdk))
     },
   })
-  try {
-    SdkLogger.observeFunction(
-      ~event=PaypalButtonsRender,
-      ~paymentMethod=Wallet(PaypalSdk),
-      ~call=() => paypalButtons.render("#paypal-button"),
-    )->ignore
-  } catch {
-  | _ => ()
-  }
+  paypalButtons->observePaypalButtonsRender
   areOneClickWalletsRendered(prev => {
     ...prev,
     isPaypal: true,
@@ -284,12 +294,26 @@ let loadBraintreePaypalSdk = (
       braintree.client.create({authorization: token}, (clientErr, clientInstance) => {
         if clientErr {
           Console.error2("Error creating client", clientErr)
+          SdkLogger.logLifecycle(
+            ~event=WalletFlowFailed({reason: ClientCreationFailed, connector: "braintree"}),
+            ~paymentMethod=Wallet(PaypalSdk),
+            ~details=[("client", "braintree_client"->JSON.Encode.string)],
+          )
         }
         braintree.paypalCheckout.create(
           {client: clientInstance},
           (paypalCheckoutErr, paypalCheckoutInstance) => {
             switch paypalCheckoutErr->Nullable.toOption {
-            | Some(val) => Console.warn(`INTEGRATION ERROR: ${val.message}`)
+            | Some(val) =>
+              Console.warn(`INTEGRATION ERROR: ${val.message}`)
+              SdkLogger.logLifecycle(
+                ~event=WalletFlowFailed({reason: ClientCreationFailed, connector: "braintree"}),
+                ~paymentMethod=Wallet(PaypalSdk),
+                ~details=[
+                  ("client", "paypal_checkout"->JSON.Encode.string),
+                  ("error_message", val.message->JSON.Encode.string),
+                ],
+              )
             | None => ()
             }
             paypalCheckoutInstance.loadPayPalSDK(
@@ -343,28 +367,35 @@ let loadBraintreePaypalSdk = (
                         )
                   },
                   onCancel: _data => {
+                    SdkLogger.logUser(
+                      ~event=ExpressCheckoutDismissed,
+                      ~details=[("connector", "braintree"->JSON.Encode.string)],
+                      ~paymentMethod=Wallet(PaypalSdk),
+                    )
                     handleCloseLoader()
                   },
-                  onError: _err => {
+                  onError: err => {
+                    SdkLogger.logLifecycle(
+                      ~event=WalletFlowFailed({
+                        reason: PaymentDataFailed,
+                        connector: "braintree",
+                      }),
+                      ~paymentMethod=Wallet(PaypalSdk),
+                      ~exn=err->Exn.anyToExnInternal,
+                    )
                     handleCloseLoader()
                   },
                   onClick: () => {
                     SdkLogger.logUser(
                       ~event=ExpressCheckoutClicked,
+                      ~details=[("connector", "braintree"->JSON.Encode.string)],
                       ~paymentMethod=Wallet(PaypalSdk),
                     )
                   },
                 })
-                try {
-                  SdkLogger.observeFunction(
-                    ~event=PaypalButtonsRender,
-                    ~details=[("connector", "braintree"->JSON.Encode.string)],
-                    ~paymentMethod=Wallet(PaypalSdk),
-                    ~call=() => paypalButtons.render("#paypal-button"),
-                  )->ignore
-                } catch {
-                | _ => ()
-                }
+                paypalButtons->observePaypalButtonsRender(
+                  ~details=[("connector", "braintree"->JSON.Encode.string)],
+                )
                 areOneClickWalletsRendered(
                   prev => {
                     ...prev,

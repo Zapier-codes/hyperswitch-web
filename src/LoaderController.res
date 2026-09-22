@@ -1,4 +1,15 @@
 open Utils
+
+let logLoaderState = (updatedState: PaymentType.loadType, ~durationMs=?, ~details=[]) => {
+  let (state: SdkLogger.loaderState, failure) = switch updatedState {
+  | Loaded(_) => (Loaded, None)
+  | Loading => (Loading, None)
+  | SemiLoaded => (SemiLoaded, None)
+  | LoadError(x) => (LoadFailed, Some(x))
+  }
+  SdkLogger.logState(~event=LoaderStateChanged({state: state}), ~details, ~durationMs?, ~failure?)
+}
+
 @react.component
 let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
   open JotaiAtoms
@@ -248,30 +259,10 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
       Date.now() -. launchTime
     }
     switch updatedState {
-    | Loaded(_) =>
-      SdkLogger.logState(
-        ~event=LoaderStateChanged({state: Loaded}),
-        ~durationMs=finalLoadLatency,
-      )
-    | Loading =>
-      SdkLogger.logState(
-        ~event=LoaderStateChanged({state: Loading}),
-        ~durationMs=finalLoadLatency,
-      )
-    | SemiLoaded => {
-        setPaymentMethodList(_ => updatedState)
-        SdkLogger.logState(
-          ~event=LoaderStateChanged({state: SemiLoaded}),
-          ~durationMs=finalLoadLatency,
-        )
-      }
-    | LoadError(x) =>
-      SdkLogger.logState(
-        ~event=LoaderStateChanged({state: LoadFailed}),
-        ~durationMs=finalLoadLatency,
-        ~failure=x,
-      )
+    | SemiLoaded => setPaymentMethodList(_ => updatedState)
+    | _ => ()
     }
+    logLoaderState(updatedState, ~durationMs=finalLoadLatency)
     Window.addEventListener("click", ev =>
       handleOnClickPostMessage(~targetOrigin=keys.parentURL, ev)
     )
@@ -343,7 +334,6 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
         }
 
         if dict->getDictIsSome("paymentElementCreate") {
-
           if dict->getDictIsSome("iframeId") {
             setKeys(prev => {
               ...prev,
@@ -415,10 +405,7 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
               let newLaunchTime = dict->getFloat("launchTime", 0.0)
               setLaunchTime(_ => newLaunchTime)
               let initLoadlatency = Date.now() -. newLaunchTime
-              SdkLogger.logLifecycle(
-                ~event=AppRendered,
-                ~durationMs=initLoadlatency,
-              )
+              SdkLogger.logLifecycle(~event=AppRendered, ~durationMs=initLoadlatency)
               [
                 ("iframeId", "no-element"->JSON.Encode.string),
                 ("publishableKey", ""->JSON.Encode.string),
@@ -645,21 +632,7 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
                 isNonEmptyPaymentMethodList ? Loaded(clientListJson) : LoadError(clientListJson)
               }
 
-          let evalMethodsList = () =>
-            switch updatedState {
-            | Loaded(_) =>
-              SdkLogger.logState(
-                ~event=LoaderStateChanged({state: Loaded}),
-                ~durationMs=finalLoadLatency,
-              )
-            | LoadError(x) =>
-              SdkLogger.logState(
-                ~event=LoaderStateChanged({state: LoadFailed}),
-                ~durationMs=finalLoadLatency,
-                ~failure=x,
-              )
-            | _ => ()
-            }
+          let evalMethodsList = () => logLoaderState(updatedState, ~durationMs=finalLoadLatency)
 
           setPaymentMethodList(_ => updatedState)
 
@@ -706,22 +679,11 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
           } else {
             Date.now() -. launchTime
           }
-          switch updatedState {
-          | Loaded(_) =>
-            SdkLogger.logState(
-              ~event=LoaderStateChanged({state: Loaded}),
-              ~details=[("source", "sdk_configs"->JSON.Encode.string)],
-              ~durationMs=finalLoadLatency,
-            )
-          | LoadError(x) =>
-            SdkLogger.logState(
-              ~event=LoaderStateChanged({state: LoadFailed}),
-              ~details=[("source", "sdk_configs"->JSON.Encode.string)],
-              ~durationMs=finalLoadLatency,
-              ~failure=x,
-            )
-          | _ => ()
-          }
+          logLoaderState(
+            updatedState,
+            ~durationMs=finalLoadLatency,
+            ~details=[("source", "sdk_configs"->JSON.Encode.string)],
+          )
           setSdkConfigs(_ => updatedState)
           if !isSdkConfigsError {
             setSdkConfigsValue(_ => sdkConfigsJson->SdkConfigParser.itemToObjMapper)
@@ -744,7 +706,6 @@ let make = (~children, ~paymentMode, ~setIntegrateErrorError) => {
         }
       } catch {
       | exn => {
-
           SdkLogger.logCrash(~origin=ParentWindowMessage, ~exn)
           setIntegrateErrorError(_ => true)
         }

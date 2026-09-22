@@ -35,15 +35,14 @@ let make = (~sessionObj: option<JSON.t>, ~walletOptions) => {
     })
 
   let onSamsungPaymentButtonClick = _ => {
+    SdkLogger.logUser(
+      ~event=ExpressCheckoutClicked,
+      ~paymentMethod=Wallet(SamsungPay),
+      ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+    )
     if isTestMode {
       Console.warn("Samsung Pay button clicked in test mode - interaction disabled")
-      SdkLogger.logUser(
-        ~event=ExpressCheckoutClicked,
-        ~paymentMethod=Wallet(SamsungPay),
-        ~details=[("test_mode", true->JSON.Encode.bool)],
-      )
     } else {
-      SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(SamsungPay))
       PaymentUtils.emitPaymentMethodInfo(
         ~paymentMethod="wallet",
         ~paymentMethodType="samsung_pay",

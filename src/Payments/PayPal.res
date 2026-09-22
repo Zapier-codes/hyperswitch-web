@@ -74,19 +74,18 @@ let make = (~walletOptions) => {
     ~isOneClickWallet=isWallet,
   )
   let onPaypalClick = (~fromExpressButton=true, _ev) => {
+    if fromExpressButton {
+      SdkLogger.logUser(
+        ~event=ExpressCheckoutClicked,
+        ~paymentMethod=Wallet(Paypal),
+        ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
+      )
+    } else {
+      SdkLogger.logUser(~event=PaymentSubmitted({source: PayButton}), ~paymentMethod=Wallet(Paypal))
+    }
     if isTestMode {
       Console.warn("PayPal button clicked in test mode - interaction disabled")
-      if fromExpressButton {
-        SdkLogger.logUser(
-          ~event=ExpressCheckoutClicked,
-          ~paymentMethod=Wallet(Paypal),
-          ~details=[("test_mode", true->JSON.Encode.bool)],
-        )
-      }
     } else {
-      if fromExpressButton {
-        SdkLogger.logUser(~event=ExpressCheckoutClicked, ~paymentMethod=Wallet(Paypal))
-      }
       PaymentUtils.emitPaymentMethodInfo(
         ~paymentMethod,
         ~paymentMethodType,

@@ -34,6 +34,7 @@ let make = (
   let isManualRetryEnabled = Jotai.useAtomValue(JotaiAtoms.isManualRetryEnabled)
   let (requiredFieldsBody, setRequiredFieldsBody) = React.useState(_ => Dict.make())
   let setUserError = message => {
+    SdkLogger.logLifecycle(~event=FormValidationFailed({reason: message}))
     postFailedSubmitResponse(~errortype="validation_error", ~message)
   }
   let {
@@ -185,6 +186,10 @@ let make = (
         <SavedCardItem
           key={i->Int.toString}
           setPaymentToken
+          logSelectionDetails=[
+            ("card_index", i->JSON.Encode.int),
+            ("list_source", "saved_methods"->JSON.Encode.string),
+          ]
           isActive
           paymentItem=obj
           brandIcon={obj->getPaymentMethodBrand}

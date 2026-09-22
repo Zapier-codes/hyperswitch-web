@@ -77,6 +77,19 @@ let makeClickToPaySession = async (
     })
   }
 
+  let countBrands = cards => {
+    let countBrand = brand =>
+      cards
+      ->Array.filter(card => card.paymentCardDescriptor->String.toLowerCase->String.includes(brand))
+      ->Array.length
+    ("visa"->countBrand, "mastercard"->countBrand)
+  }
+
+  let unavailableCode = (~error: option<errorObj>, ~actionCode) =>
+    error
+    ->Option.flatMap(err => err.reason)
+    ->Option.getOr(actionCode->LoggerUtils.variantName)
+
   let getClickToPayErrorResponse = (
     ~error: option<errorObj>,
     ~defaultErrorType="ERROR",
@@ -219,64 +232,31 @@ let makeClickToPaySession = async (
           ClickToPayLogger.logLifecycle(~event=CustomerVerificationRequired({provider: VisaUctp}))
           "TRIGGERED_CUSTOMER_AUTHENTICATION"
         }
-      | SUCCESS => {
-          maskedCards := getMaskedCardsListFromResponse(getCardsResponse)
-
-          let areMaskedCardsPresent = maskedCards.contents->Array.length > 0
-
-          if areMaskedCardsPresent {
-            let visaCount =
-              maskedCards.contents
-              ->Array.filter(card =>
-                card.paymentCardDescriptor->String.toLowerCase->String.includes("visa")
-              )
-              ->Array.length
-            let mastercardCount =
-              maskedCards.contents
-              ->Array.filter(card =>
-                card.paymentCardDescriptor->String.toLowerCase->String.includes("mastercard")
-              )
-              ->Array.length
-
-            ClickToPayLogger.logLifecycle(
-              ~event=CardsListed({
-                provider: VisaUctp,
-                actionCode: SUCCESS->LoggerUtils.variantName,
-                visa: visaCount,
-                mastercard: mastercardCount,
-              }),
-            )
-            "RECOGNIZED_CARDS_PRESENT"
-          } else {
-            ClickToPayLogger.logLifecycle(
-              ~event=CardsListed({
-                provider: VisaUctp,
-                actionCode: SUCCESS->LoggerUtils.variantName,
-                visa: 0,
-                mastercard: 0,
-              }),
-            )
-            "NO_CARDS_PRESENT"
+      | (SUCCESS | ADD_CARD) as listedActionCode => {
+          if listedActionCode === SUCCESS {
+            maskedCards := getMaskedCardsListFromResponse(getCardsResponse)
           }
-        }
-      | ADD_CARD => {
+          let listedCards = listedActionCode === SUCCESS ? maskedCards.contents : []
+          let (visa, mastercard) = listedCards->countBrands
+
           ClickToPayLogger.logLifecycle(
             ~event=CardsListed({
               provider: VisaUctp,
-              actionCode: ADD_CARD->LoggerUtils.variantName,
-              visa: 0,
-              mastercard: 0,
+              actionCode: listedActionCode->LoggerUtils.variantName,
+              visa,
+              mastercard,
             }),
           )
-          "NO_CARDS_PRESENT"
+          listedCards->Array.length > 0 ? "RECOGNIZED_CARDS_PRESENT" : "NO_CARDS_PRESENT"
         }
       | _ => {
           ClickToPayLogger.logLifecycle(
             ~event=CardsUnavailable({
               provider: VisaUctp,
-              code: getCardsResponse.error
-              ->Option.flatMap(err => err.reason)
-              ->Option.getOr(getCardsResponse.actionCode->LoggerUtils.variantName),
+              code: unavailableCode(
+                ~error=getCardsResponse.error,
+                ~actionCode=getCardsResponse.actionCode,
+              ),
             }),
           )
           "ERROR"
@@ -325,25 +305,14 @@ let makeClickToPaySession = async (
         ClickToPayLogger.logLifecycle(~event=CustomerRecognised({provider: VisaUctp}))
         maskedCards := getMaskedCardsListFromResponse(validateCustomerAuthenticationResponse)
 
-        let visaCount =
-          maskedCards.contents
-          ->Array.filter(card =>
-            card.paymentCardDescriptor->String.toLowerCase->String.includes("visa")
-          )
-          ->Array.length
-        let mastercardCount =
-          maskedCards.contents
-          ->Array.filter(card =>
-            card.paymentCardDescriptor->String.toLowerCase->String.includes("mastercard")
-          )
-          ->Array.length
+        let (visa, mastercard) = maskedCards.contents->countBrands
 
         ClickToPayLogger.logLifecycle(
           ~event=CardsListed({
             provider: VisaUctp,
             actionCode: SUCCESS->LoggerUtils.variantName,
-            visa: visaCount,
-            mastercard: mastercardCount,
+            visa,
+            mastercard,
           }),
         )
 
@@ -352,10 +321,9 @@ let makeClickToPaySession = async (
         ClickToPayLogger.logLifecycle(
           ~event=CardsUnavailable({
             provider: VisaUctp,
-            code: validateCustomerAuthenticationResponse.error
-            ->Option.flatMap(err => err.reason)
-            ->Option.getOr(
-              validateCustomerAuthenticationResponse.actionCode->LoggerUtils.variantName,
+            code: unavailableCode(
+              ~error=validateCustomerAuthenticationResponse.error,
+              ~actionCode=validateCustomerAuthenticationResponse.actionCode,
             ),
           }),
         )
@@ -534,6 +502,15 @@ let makeClickToPaySession = async (
               ClickToPayLogger.observeMerchantCall(
                 ~method=IsCustomerPresent,
                 ~details=[("email_provided", emailProvided->JSON.Encode.bool)],
+                ~detailsOf=result => [
+                  (
+                    "customer_present",
+                    result
+                    ->Utils.getDictFromJson
+                    ->Utils.getBool("customerPresent", false)
+                    ->JSON.Encode.bool,
+                  ),
+                ],
                 ~call=() => isCustomerPresent(~visaDirectSdk, ~email),
               )
             },
@@ -556,6 +533,13 @@ let makeClickToPaySession = async (
                     checkoutWithCardInput.rememberMe->Option.getOr(false)->JSON.Encode.bool,
                   ),
                   ("card_count", maskedCards.contents->Array.length->JSON.Encode.int),
+                  (
+                    "window_provided",
+                    checkoutWithCardInput.windowRef
+                    ->Nullable.toOption
+                    ->Option.isSome
+                    ->JSON.Encode.bool,
+                  ),
                 ],
                 ~call=() =>
                   checkoutWithCard(
@@ -633,7 +617,7 @@ let makeClickToPaySession = async (
               })
               ->catch(error => {
                 ClickToPayLogger.logLifecycle(
-                  ~event=ProviderUnavailable({provider: VisaDirect}),
+                  ~event=ProviderUnavailable({provider: VisaUctp}),
                   ~exn=error,
                 )
                 let failedErrorResponse = getFailedSubmitResponse(
@@ -658,7 +642,7 @@ let makeClickToPaySession = async (
         }
       }
     | None => {
-        ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaDirect}))
+        ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaUctp}))
         let failedErrorResponse = getFailedSubmitResponse(
           ~errorType="ERROR",
           ~message="An error occured while trying to fetch Click to Pay Details",
