@@ -193,6 +193,7 @@ let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~paymentMethod=?
     ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~paymentMethod?,
+    ~once=true,
   )
 
 let logMerchantIssue = (~issue: merchantIssue, ~details=[]) =>
@@ -202,6 +203,7 @@ let logMerchantIssue = (~issue: merchantIssue, ~details=[]) =>
     ~severity=issue->merchantIssueSeverity,
     ~data=issue->LoggerUtils.eventDetails,
     ~details,
+    ~once=true,
   )
 
 let startSession = (~sessionId=?, ~merchantId=?, ~profileId=?) => {

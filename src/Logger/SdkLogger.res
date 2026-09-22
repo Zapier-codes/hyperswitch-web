@@ -263,6 +263,7 @@ type openedView =
 type submitSource =
   | PayButton
   | SaveCardButton
+  | MerchantApi
 
 type verificationSource =
   | ClickToPayOtp
@@ -539,7 +540,9 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
   switch (event, paymentMethod) {
   | (PaymentMethodSelected({method}), None) =>
     method->LoggerTaxonomy.fromBackendValue->Option.forEach(LoggerContext.setPaymentMethod)
-  | (PaymentMethodSelected(_), Some(paymentMethod)) => LoggerContext.setPaymentMethod(paymentMethod)
+  | (PaymentMethodSelected(_), Some(paymentMethod))
+  | (SavedMethodSelected(_), Some(paymentMethod)) =>
+    LoggerContext.setPaymentMethod(paymentMethod)
   | _ => ()
   }
   let rateKey = switch event {

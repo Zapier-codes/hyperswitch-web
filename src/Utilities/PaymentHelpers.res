@@ -16,6 +16,25 @@ let getPaymentType = paymentMethodType =>
   | _ => Other
   }
 
+let setLoggerPaymentMethodFromBody = (~bodyArr: array<(string, JSON.t)>, ~paymentType) => {
+  let bodyField = key =>
+    bodyArr
+    ->Array.find(((entryKey, _)) => entryKey === key)
+    ->Option.map(((_, json)) => json->getStringFromJson(""))
+    ->Option.getOr("")
+  switch LoggerTaxonomy.fromBackendPair(
+    ~method=bodyField("payment_method"),
+    ~methodType=bodyField("payment_method_type"),
+  ) {
+  | Some(paymentMethod) => LoggerContext.setPaymentMethod(paymentMethod)
+  | None =>
+    switch paymentType {
+    | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
+    | _ => ()
+    }
+  }
+}
+
 let retrievePaymentIntent = async (
   clientSecret,
   ~headers=?,
@@ -1332,16 +1351,7 @@ let usePaymentIntent = paymentType => {
       let uri = `${endpoint}/${path}`
 
       let callIntent = body => {
-        switch paymentType {
-        | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
-        | _ =>
-          bodyArr
-          ->Array.find(((key, _)) => key === "payment_method_type")
-          ->Option.flatMap(((_, json)) =>
-            json->getStringFromJson("")->LoggerTaxonomy.fromBackendValue
-          )
-          ->Option.forEach(LoggerContext.setPaymentMethod)
-        }
+        setLoggerPaymentMethodFromBody(~bodyArr, ~paymentType)
         if blockConfirm && GlobalVars.isInteg {
           Console.warn2("CONFIRM IS BLOCKED - Body", body)
           Console.warn2(
@@ -1981,16 +1991,7 @@ let usePostSessionTokens = (
       let uri = `${endpoint}/payments/${paymentIntentId}/post_session_tokens`
 
       let callIntent = body => {
-        switch paymentType {
-        | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
-        | _ =>
-          bodyArr
-          ->Array.find(((key, _)) => key === "payment_method_type")
-          ->Option.flatMap(((_, json)) =>
-            json->getStringFromJson("")->LoggerTaxonomy.fromBackendValue
-          )
-          ->Option.forEach(LoggerContext.setPaymentMethod)
-        }
+        setLoggerPaymentMethodFromBody(~bodyArr, ~paymentType)
 
         SdkLogger.logLifecycle(
           ~event=PaymentAttempted,

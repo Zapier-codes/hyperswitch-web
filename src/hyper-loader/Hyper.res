@@ -365,6 +365,9 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let confirmPaymentWrapper = (payload, isOneClick, result, ~isSdkButton=false) => {
         let confirmTimestamp = Date.now()
+        if !isOneClick && !isSdkButton {
+          SdkLogger.logUser(~event=PaymentSubmitted({source: MerchantApi}))
+        }
         let confirmParams =
           payload
           ->JSON.Decode.object

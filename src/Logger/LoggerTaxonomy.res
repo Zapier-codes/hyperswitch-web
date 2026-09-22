@@ -205,3 +205,13 @@ let qualifiedName = value =>
   | Some(typeName) => `${value->name}.${typeName}`
   | None => value->name
   }
+
+let refine = (existing: option<paymentMethod>, incoming: paymentMethod) =>
+  switch existing {
+  | Some(existing) if existing->name === incoming->name =>
+    switch (existing->typeName, incoming->typeName) {
+    | (Some(_), None) => existing
+    | _ => incoming
+    }
+  | _ => incoming
+  }

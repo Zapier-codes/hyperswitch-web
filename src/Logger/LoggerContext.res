@@ -57,10 +57,27 @@ let setSessionData = (
   if context.contents.sessionId !== previous.sessionId {
     LoggerUtils.safeRun(() => onSessionChange.contents())
   }
+  let current = context.contents
+  if (
+    current.sessionId !== previous.sessionId ||
+    current.merchantId !== previous.merchantId ||
+    current.paymentId !== previous.paymentId
+  ) {
+    LoggerUtils.safeRun(() =>
+      LoggerQueue.backfillContext(
+        ~sessionId=current.sessionId,
+        ~merchantId=current.merchantId,
+        ~paymentId=current.paymentId,
+      )
+    )
+  }
 }
 
 let setPaymentMethod = paymentMethod =>
-  context := {...context.contents, paymentMethod: Some(paymentMethod)}
+  context := {
+      ...context.contents,
+      paymentMethod: Some(context.contents.paymentMethod->LoggerTaxonomy.refine(paymentMethod)),
+    }
 
 let paymentIdOfClientSecret = clientSecret =>
   clientSecret->String.split("_secret_")->Array.get(0)->Option.getOr("")

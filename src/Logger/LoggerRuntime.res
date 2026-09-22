@@ -42,7 +42,14 @@ let isEnabled = severity => GlobalVars.enableLogging && severity->rank >= minimu
 
 let emitCounts = ref(Dict.make())
 
-LoggerContext.onSessionChange := (() => emitCounts := Dict.make())
+let onceKeys = ref(Dict.make())
+
+LoggerContext.onSessionChange := (
+  () => {
+    emitCounts := Dict.make()
+    onceKeys := Dict.make()
+  }
+)
 
 let eventName = (~category, ~action, ~subject, ~outcome) => {
   let step = switch (action, outcome) {
@@ -68,6 +75,7 @@ let emit = (
   ~paymentMethod: option<LoggerTaxonomy.paymentMethod>=?,
   ~context: option<LoggerContext.t>=?,
   ~rateKey: option<string>=?,
+  ~once=false,
 ) =>
   if severity->isEnabled {
     LoggerUtils.safeRun(() => {
@@ -85,7 +93,24 @@ let emit = (
       let limit = GlobalVars.maxLogsPushedPerEventName
       let seen = emitCounts.contents->Dict.get(countKey)->Option.getOr(0)
 
-      if seen <= limit {
+      let duplicateOfOnce = if once {
+        let fact =
+          data
+          ->Array.concat(details)
+          ->Dict.fromArray
+          ->JSON.Encode.object
+          ->JSON.stringify
+        let onceKey = `${name}#${fact}`
+        let alreadyLogged = onceKeys.contents->Dict.get(onceKey)->Option.isSome
+        if !alreadyLogged {
+          onceKeys.contents->Dict.set(onceKey, true)
+        }
+        alreadyLogged
+      } else {
+        false
+      }
+
+      if seen <= limit && !duplicateOfOnce {
         emitCounts.contents->Dict.set(countKey, seen + 1)
         let paymentMethod = paymentMethod->Option.orElse(context.paymentMethod)
         let errorDetails =

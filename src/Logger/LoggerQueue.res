@@ -135,6 +135,29 @@ let push = (row, ~isError) => {
   }
 }
 
+// Early rows (e.g. iframe mount events) can be emitted before the parent
+// window shares the session context. They wait in the flush debounce window,
+// so stamp any still-queued rows once the identifiers become known.
+let backfillContext = (~sessionId, ~merchantId, ~paymentId) => {
+  queue.rows->Array.forEach(row =>
+    row
+    ->JSON.Decode.object
+    ->Option.forEach(object => {
+      let fill = (key, value) =>
+        if (
+          value !== "" &&
+          object->Dict.get(key)->Option.flatMap(JSON.Decode.string)->Option.getOr("") === ""
+        ) {
+          object->Dict.set(key, value->JSON.Encode.string)
+        }
+      fill("session_id", sessionId)
+      fill("merchant_id", merchantId)
+      fill("payment_id", paymentId)
+    })
+  )
+  recountBytes()
+}
+
 let takeDroppedRows = () => {
   let dropped = queue.droppedRows
   queue.droppedRows = 0

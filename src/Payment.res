@@ -127,29 +127,39 @@ let make = (~paymentMode, ~integrateError) => {
       | _ => ()
       }
     } else {
+      let userError = ref(None)
+      let noteUserError = message =>
+        switch userError.contents {
+        | None => userError := Some(message)
+        | Some(_) => ()
+        }
       if cardNumber === "" {
         setCardError(_ => localeString.cardNumberEmptyText)
-        setUserError(localeString.enterFieldsText)
+        noteUserError(localeString.enterFieldsText)
       } else if cardEligibilityError->Option.isSome {
         let msg = EligibilityHelpers.getCardEligibilityErrorText(
           ~cardEligibilityError,
           ~localeString,
         )
         setCardError(_ => msg)
-        setUserError(msg)
+        noteUserError(msg)
       } else if isEligibilityPending {
-        setUserError(localeString.paymentDetailsBeingCheckedText)
+        noteUserError(localeString.paymentDetailsBeingCheckedText)
       }
       if cardExpiry === "" {
         setExpiryError(_ => localeString.cardExpiryDateEmptyText)
-        setUserError(localeString.enterFieldsText)
+        noteUserError(localeString.enterFieldsText)
       }
       if cvcNumber === "" {
         setCvcError(_ => localeString.cvcNumberEmptyText)
-        setUserError(localeString.enterFieldsText)
+        noteUserError(localeString.enterFieldsText)
       }
       if !validFormat {
-        setUserError(localeString.enterValidDetailsText)
+        noteUserError(localeString.enterValidDetailsText)
+      }
+      switch userError.contents {
+      | Some(message) => setUserError(message)
+      | None => ()
       }
     }
   }
