@@ -9,7 +9,15 @@ let make = () => {
   let paymentType = paymentMode->CardThemeType.getPaymentMode
 
   let networkStatus = NetworkInformation.useNetworkInformation()
-  React.useMemo0(() => SdkLogger.adoptSessionFromParent(~paymentType))
+  React.useMemo0(() =>
+    SdkLogger.adoptSessionFromParent(
+      ~source=switch (paymentMode, getQueryParamsDictforKey(url.search, "fullscreenType")) {
+      | ("", "preMountLoader") => PreMountLoader
+      | ("", overlay) => Fullscreen(overlay)
+      | _ => Elements(paymentType)
+      },
+    )
+  )
 
   React.useEffect1(() => {
     switch networkStatus {

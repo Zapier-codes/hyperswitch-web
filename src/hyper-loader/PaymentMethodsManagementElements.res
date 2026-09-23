@@ -222,6 +222,7 @@ let make = (
             ("publishableKey", publishableKey->JSON.Encode.string),
             ("endpoint", endpoint->JSON.Encode.string),
             ("sdkSessionId", sdkSessionId->JSON.Encode.string),
+            LoggerContext.sharedContext(),
             ("customPodUri", customPodUri->JSON.Encode.string),
             ("parentURL", "*"->JSON.Encode.string),
             ("analyticsMetadata", analyticsMetadata),

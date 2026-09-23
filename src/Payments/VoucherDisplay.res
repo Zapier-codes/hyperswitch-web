@@ -6,6 +6,7 @@ let make = () => {
   let (downloadUrl, setDownloadUrl) = React.useState(_ => "")
   let (reference, setReference) = React.useState(_ => "")
   let (paymentMethod, setPaymentMethod) = React.useState(_ => "")
+  let (paymentMethodFamily, setPaymentMethodFamily) = React.useState(_ => "")
   let (paymentIntent, setPaymentIntent) = React.useState(_ => JSON.Encode.null)
   let (loader, setLoader) = React.useState(_ => true)
   let linkRef = React.useRef(Nullable.null)
@@ -35,6 +36,7 @@ let make = () => {
         setDownloadUrl(_ => metaDataDict->getString("voucherUrl", ""))
         setReference(_ => metaDataDict->getString("reference", ""))
         setPaymentMethod(_ => metaDataDict->getString("paymentMethod", ""))
+        setPaymentMethodFamily(_ => metaDataDict->getString("paymentMethodFamily", ""))
         setPaymentIntent(_ => metaDataDict->getJsonObjectFromDict("payment_intent_data"))
         setLoader(_ => false)
       }
@@ -64,7 +66,10 @@ let make = () => {
                 SdkLogger.logUser(
                   ~event=VoucherDownloadRequested,
                   ~details=autoDownloading.current ? [("auto", true->JSON.Encode.bool)] : [],
-                  ~paymentMethod=?paymentMethod->LoggerPaymentMethod.fromBackendValue,
+                  ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
+                    ~method=paymentMethodFamily,
+                    ~methodType=paymentMethod,
+                  ),
                 )
               }}
             >

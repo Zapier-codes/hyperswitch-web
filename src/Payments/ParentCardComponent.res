@@ -448,6 +448,7 @@ let make = (
           ("publishableKey", currentPublishableKey->JSON.Encode.string),
           ("endpoint", endpoint->JSON.Encode.string),
           ("sdkSessionId", currentSessionId->JSON.Encode.string),
+          LoggerContext.sharedContext(),
           ("customPodUri", currentCustomPodUri->JSON.Encode.string),
           ("paymentId", currentPaymentId->JSON.Encode.string),
           ("parentURL", Window.Location.origin->JSON.Encode.string),

@@ -76,7 +76,10 @@ let make = () => {
           let metaDataDict = metadata->JSON.Decode.object->Option.getOr(Dict.make())
 
           let paymentMethodStr = metaDataDict->getString("paymentMethod", "")
-          loggedPaymentMethodRef.current = paymentMethodStr->LoggerPaymentMethod.fromBackendValue
+          loggedPaymentMethodRef.current = LoggerPaymentMethod.fromBackendPair(
+            ~method=metaDataDict->getString("paymentMethodFamily", ""),
+            ~methodType=paymentMethodStr,
+          )
           let parsedPaymentMethod = parsePaymentMethod(paymentMethodStr)
 
           let defaultConfig = getPaymentMethodConfig(parsedPaymentMethod)

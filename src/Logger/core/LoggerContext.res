@@ -1,19 +1,13 @@
 type t = {
   sessionId: string,
   merchantId: string,
-  profileId: string,
   paymentId: string,
-  authenticationId: string,
-  paymentMethod: option<LoggerPaymentMethod.paymentMethod>,
 }
 
 let empty = {
   sessionId: "",
   merchantId: "",
-  profileId: "",
   paymentId: "",
-  authenticationId: "",
-  paymentMethod: None,
 }
 
 let context = ref(empty)
@@ -32,14 +26,7 @@ let keep = (existing, incoming) =>
   | None => existing
   }
 
-let setSessionData = (
-  ~sessionId=?,
-  ~merchantId=?,
-  ~profileId=?,
-  ~paymentId=?,
-  ~authenticationId=?,
-  (),
-) => {
+let setSessionData = (~sessionId=?, ~merchantId=?, ~paymentId=?, ()) => {
   let previous = context.contents
 
   let base = switch sessionId->Option.map(String.trim) {
@@ -47,12 +34,9 @@ let setSessionData = (
   | _ => previous
   }
   context := {
-      ...base,
       sessionId: base.sessionId->keep(sessionId),
       merchantId: base.merchantId->keep(merchantId),
-      profileId: base.profileId->keep(profileId),
       paymentId: base.paymentId->keep(paymentId),
-      authenticationId: base.authenticationId->keep(authenticationId),
     }
   if context.contents.sessionId !== previous.sessionId {
     LoggerUtils.safeRun(() => onSessionChange.contents())
@@ -72,14 +56,6 @@ let setSessionData = (
     )
   }
 }
-
-let setPaymentMethod = paymentMethod =>
-  context := {
-      ...context.contents,
-      paymentMethod: Some(
-        context.contents.paymentMethod->LoggerPaymentMethod.refine(paymentMethod),
-      ),
-    }
 
 let paymentIdOfClientSecret = clientSecret =>
   clientSecret->String.split("_secret_")->Array.get(0)->Option.getOr("")
@@ -128,6 +104,7 @@ let nestedDict = (source, key) =>
 let readField = (message, key) =>
   [
     message,
+    message->nestedDict("loggerContext"),
     message->nestedDict("metadata"),
     message->nestedDict("paymentOptions"),
     message->nestedDict("options"),
@@ -146,7 +123,11 @@ let startSessionFromMessage = message =>
     ->readField("sdkAuthorization")
     ->paymentIdOfSdkAuthorization {
     | Some(paymentId) => paymentId
-    | None => message->readField("clientSecret")->paymentIdOfClientSecret
+    | None =>
+      switch message->readField("paymentId") {
+      | "" => message->readField("clientSecret")->paymentIdOfClientSecret
+      | paymentId => paymentId
+      }
     }
     setSessionData(
       ~sessionId=message->readField("sdkSessionId"),
@@ -155,3 +136,17 @@ let startSessionFromMessage = message =>
       (),
     )
   })
+
+let sharedContext = () => {
+  let {sessionId, merchantId, paymentId} = context.contents
+  (
+    "loggerContext",
+    [
+      ("sdkSessionId", sessionId->JSON.Encode.string),
+      ("publishableKey", merchantId->JSON.Encode.string),
+      ("paymentId", paymentId->JSON.Encode.string),
+    ]
+    ->Dict.fromArray
+    ->JSON.Encode.object,
+  )
+}

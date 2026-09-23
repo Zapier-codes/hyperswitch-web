@@ -16,25 +16,6 @@ let getPaymentType = paymentMethodType =>
   | _ => Other
   }
 
-let setLoggerPaymentMethodFromBody = (~bodyArr: array<(string, JSON.t)>, ~paymentType) => {
-  let bodyField = key =>
-    bodyArr
-    ->Array.find(((entryKey, _)) => entryKey === key)
-    ->Option.map(((_, json)) => json->getStringFromJson(""))
-    ->Option.getOr("")
-  switch LoggerPaymentMethod.fromBackendPair(
-    ~method=bodyField("payment_method"),
-    ~methodType=bodyField("payment_method_type"),
-  ) {
-  | Some(paymentMethod) => LoggerContext.setPaymentMethod(paymentMethod)
-  | None =>
-    switch paymentType {
-    | Card => LoggerContext.setPaymentMethod(Card(Unspecified))
-    | _ => ()
-    }
-  }
-}
-
 let retrievePaymentIntent = async (
   clientSecret,
   ~headers=?,
@@ -687,6 +668,10 @@ let rec intentCall = (
                     ("expiryTime", expiryTime->Float.toString->JSON.Encode.string),
                     ("url", url.href->JSON.Encode.string),
                     ("paymentMethod", paymentMethod->JSON.Encode.string),
+                    (
+                      "paymentMethodFamily",
+                      intentDict->getString("payment_method", "")->JSON.Encode.string,
+                    ),
                     ("display_text", displayText->JSON.Encode.string),
                     ("border_color", borderColor->JSON.Encode.string),
                   ]->getJsonFromArrayOfJson
@@ -785,7 +770,7 @@ let rec intentCall = (
                   ~isPaymentSession,
                   ~resolve,
                   ~data,
-                  ~paymentMethod,
+                  ~loggedPaymentMethod,
                 )
               } else if intent.nextAction.type_ === "display_voucher_information" {
                 let voucherData = intent.nextAction.voucher_details->Option.getOr({
@@ -800,6 +785,10 @@ let rec intentCall = (
                     ("reference", voucherData.reference->JSON.Encode.string),
                     ("returnUrl", url.href->JSON.Encode.string),
                     ("paymentMethod", paymentMethod->JSON.Encode.string),
+                    (
+                      "paymentMethodFamily",
+                      intentDict->getString("payment_method", "")->JSON.Encode.string,
+                    ),
                     ("payment_intent_data", data),
                     ("clientSecret", clientSecret->JSON.Encode.string),
                     ("publishableKey", confirmParam.publishableKey->JSON.Encode.string),
@@ -1346,7 +1335,6 @@ let usePaymentIntent = paymentType => {
       let uri = `${endpoint}/${path}`
 
       let callIntent = body => {
-        setLoggerPaymentMethodFromBody(~bodyArr, ~paymentType)
         if blockConfirm && GlobalVars.isInteg {
           Console.warn2("CONFIRM IS BLOCKED - Body", body)
           Console.warn2(
@@ -1980,8 +1968,6 @@ let usePostSessionTokens = (
       let uri = `${endpoint}/payments/${paymentIntentId}/post_session_tokens`
 
       let callIntent = body => {
-        setLoggerPaymentMethodFromBody(~bodyArr, ~paymentType)
-
         SdkLogger.logLifecycle(
           ~event=PaymentAttempted,
           ~details=[("content_length", body->String.length->JSON.Encode.int)],
@@ -2271,7 +2257,11 @@ let fetchSdkConfigs = async (
 
   try {
     let data = await response->Fetch.Response.json
-    response->Fetch.Response.ok ? data : JSON.Encode.null
+    if response->Fetch.Response.ok {
+      data
+    } else {
+      JSON.Encode.null
+    }
   } catch {
   | _ => JSON.Encode.null
   }

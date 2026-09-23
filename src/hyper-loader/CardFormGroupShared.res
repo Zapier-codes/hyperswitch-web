@@ -191,6 +191,7 @@ let buildFieldMountConfig = (
   ->Array.concat(credentialKeys)
   ->Array.concat([
     ("sdkSessionId", sdkSessionId->JSON.Encode.string),
+    LoggerContext.sharedContext(),
     ("customPodUri", ""->JSON.Encode.string),
     ("parentURL", "*"->JSON.Encode.string),
     ("sdkHandleOneClickConfirmPayment", false->JSON.Encode.bool),

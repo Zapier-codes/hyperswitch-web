@@ -155,6 +155,25 @@ let getPaymentMethodName = (~paymentMethodType, ~paymentMethodName) => {
   }
 }
 
+let loggerPaymentMethodOf = (
+  ~paymentMethodName,
+  ~paymentMethods: array<PaymentMethodsRecord.methods>,
+) =>
+  switch paymentMethodName {
+  | "card" => Some(LoggerPaymentMethod.Card(Unspecified))
+  | _ =>
+    paymentMethods
+    ->Array.findMap(({payment_method, payment_method_types}) => {
+      let methodType = getPaymentMethodName(~paymentMethodType=payment_method, ~paymentMethodName)
+      payment_method_types
+      ->Array.find(entry => entry.payment_method_type === methodType)
+      ->Option.flatMap(_ =>
+        LoggerPaymentMethod.fromBackendPair(~method=payment_method, ~methodType)
+      )
+    })
+    ->Option.orElse(LoggerPaymentMethod.fromBackendValue(paymentMethodName))
+  }
+
 let isAppendingCustomerAcceptance = (
   ~isGuestCustomer,
   ~paymentType: PaymentMethodsRecord.payment_type,

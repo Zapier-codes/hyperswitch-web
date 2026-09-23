@@ -4,15 +4,19 @@ let schemaVersion = 8
 
 type source =
   | HyperLoader
+  | PreMountLoader
   | Headless
   | Elements(CardThemeType.mode)
+  | Fullscreen(string)
 
 let sourceName = source =>
   switch source {
   | HyperLoader => "HYPER_LOADER"
+  | PreMountLoader => "PRE_MOUNT_LOADER"
   | Headless => "HEADLESS"
   | Elements(mode) =>
     `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerUtils.screamingSnakeCase}`
+  | Fullscreen(overlay) => `FULLSCREEN_${overlay->LoggerUtils.screamingSnakeCase}`
   }
 
 let currentSource = ref(HyperLoader->sourceName)
@@ -102,7 +106,6 @@ let emit = (
 
       if seen <= limit && !duplicateOfOnce {
         emitCounts.contents->Dict.set(countKey, seen + 1)
-        let paymentMethod = paymentMethod->Option.orElse(context.paymentMethod)
         let errorDetails =
           switch exn {
           | Some(exn) => Some(exn->LoggerUtils.summarizeExn)
@@ -124,8 +127,6 @@ let emit = (
         let value =
           [
             ("schema_version", schemaVersion->JSON.Encode.int),
-            ("profile_id", context.profileId->JSON.Encode.string),
-            ("authentication_id", context.authenticationId->JSON.Encode.string),
             (
               "href",
               Window.hrefWithoutSearch

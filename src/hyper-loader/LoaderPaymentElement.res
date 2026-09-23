@@ -477,6 +477,7 @@ let make = (
                             ("metadata", fullscreenMetadata.contents),
                             ("options", options),
                             ("appearance", appearance),
+                            LoggerContext.sharedContext(),
                           ]->Dict.fromArray,
                         )
                       }
@@ -490,7 +491,10 @@ let make = (
                         )
                         let fullScreenEle = Window.querySelector(`#orca-fullscreen`)
                         fullScreenEle->Window.iframePostMessage(
-                          [("metadata", fullscreenMetadata.contents)]->Dict.fromArray,
+                          [
+                            ("metadata", fullscreenMetadata.contents),
+                            LoggerContext.sharedContext(),
+                          ]->Dict.fromArray,
                         )
                       }
                     }

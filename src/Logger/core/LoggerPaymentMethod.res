@@ -40,10 +40,3 @@ let qualifiedName = value => {
   | OpenBanking(subtype) => subtype->qualify
   }
 }
-
-let refine = (existing: option<paymentMethod>, incoming: paymentMethod) =>
-  switch existing {
-  | Some(existing)
-    if existing->qualifiedName->String.startsWith(`${incoming->qualifiedName}.`) => existing
-  | _ => incoming
-  }

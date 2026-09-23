@@ -55,7 +55,14 @@ let logState = (
     ~message?,
   )
 
-let namedField = field => field->String.trim === "" ? "unnamed" : field
+let namedField = field =>
+  switch field->String.trim {
+  | "" => "unnamed"
+  | "cardNoInput" => "card_number"
+  | "expiryInput" => "card_expiry"
+  | "cvvInput" => "card_cvc"
+  | field => field->LoggerUtils.snakeCase
+  }
 
 let identify = event =>
   switch event {
@@ -68,14 +75,6 @@ let identify = event =>
 
 let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?, ~message=?) => {
   let event = event->identify
-  switch (event, paymentMethod) {
-  | (PaymentMethodSelected({method}), None) =>
-    method->LoggerPaymentMethod.fromBackendValue->Option.forEach(LoggerContext.setPaymentMethod)
-  | (PaymentMethodSelected(_), Some(paymentMethod))
-  | (SavedMethodSelected(_), Some(paymentMethod)) =>
-    LoggerContext.setPaymentMethod(paymentMethod)
-  | _ => ()
-  }
   let rateKey = switch event {
   | FieldEdited({field}) | FieldFocused({field}) | FieldBlurred({field}) => Some(field)
   | _ => None
@@ -115,8 +114,8 @@ let isSdkFrame = source =>
   | source => sdkOrigins->Array.some(origin => source->String.includes(origin))
   }
 
-let adoptSessionFromParent = (~paymentType) => {
-  LoggerRuntime.configure(~source=Elements(paymentType))
+let adoptSessionFromParent = (~source) => {
+  LoggerRuntime.configure(~source)
   Window.addEventListener("message", (ev: Window.event) => {
     let message = try JSON.parseExn(ev.data) catch {
     | _ => JSON.Encode.null

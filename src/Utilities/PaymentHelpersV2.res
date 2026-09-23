@@ -57,20 +57,19 @@ let intentCall = (
         Promise.make(
           (resolve, _) => {
             if isConfirm {
-              let paymentMethod = switch paymentType {
-              | Card => "card"
-              | _ =>
-                bodyStr
-                ->safeParse
-                ->getDictFromJson
-                ->getString("payment_method_type", "")
-              }
-              let loggedPaymentMethod = paymentMethod->LoggerPaymentMethod.fromBackendValue
               SdkLogger.logLifecycle(
                 ~event=PaymentRejected,
                 ~failure=data,
                 ~details=data->LoggerUtils.intentErrorDetails,
-                ~paymentMethod=?loggedPaymentMethod,
+                ~paymentMethod=?switch paymentType {
+                | Card => Some(LoggerPaymentMethod.Card(Unspecified))
+                | _ =>
+                  let body = bodyStr->safeParse->getDictFromJson
+                  LoggerPaymentMethod.fromBackendPair(
+                    ~method=body->getString("payment_method", ""),
+                    ~methodType=body->getString("payment_method_type", ""),
+                  )
+                },
               )
             }
             let dict = data->getDictFromJson

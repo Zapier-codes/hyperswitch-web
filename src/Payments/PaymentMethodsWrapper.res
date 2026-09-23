@@ -119,7 +119,10 @@ let make = (~paymentMethodName: string) => {
         let message = "Please enter all fields"
         SdkLogger.logLifecycle(
           ~event=FormValidationFailed({reason: "Please enter all fields"}),
-          ~paymentMethod=Dynamic(paymentMethodName),
+          ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
+            ~method=paymentMethodDetails.methodType,
+            ~methodType=paymentMethodDetails.paymentMethodName,
+          ),
           ~message,
         )
         postFailedSubmitResponse(~errortype="validation_error", ~message)

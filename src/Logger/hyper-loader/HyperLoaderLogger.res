@@ -72,7 +72,7 @@ let logMerchantIssue = (~issue: merchantIssue, ~details=[], ~message=?) =>
     ~once=true,
   )
 
-let startSession = (~sessionId=?, ~merchantId=?, ~profileId=?) => {
+let startSession = (~sessionId=?, ~merchantId=?) => {
   LoggerRuntime.configure(~source=HyperLoader)
-  LoggerContext.setSessionData(~sessionId?, ~merchantId?, ~profileId?, ())
+  LoggerContext.setSessionData(~sessionId?, ~merchantId?, ())
 }

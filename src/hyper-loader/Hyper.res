@@ -138,11 +138,6 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     | Object(json) => json->getString("publishableKey", "")
     | _ => ""
     }
-    let profileId = switch keys->JSON.Classify.classify {
-    | String(_) => ""
-    | Object(json) => json->getString("profileId", "")
-    | _ => ""
-    }
     let isPreloadEnabled =
       options
       ->getOptionsDict
@@ -189,7 +184,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     | provided => provided
     }
     let sdkTimestamp = analyticsInfoDict->getString("timeStamp", Date.now()->Float.toString)
-    HyperLoaderLogger.startSession(~sessionId=sessionID, ~merchantId=publishableKey, ~profileId)
+    HyperLoaderLogger.startSession(~sessionId=sessionID, ~merchantId=publishableKey)
 
     HyperLoaderLogger.logMerchantProps(
       ~event=TestMode({surface: Hyper}),
@@ -234,12 +229,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
     {
       () => {
-        LoggerContext.setSessionData(
-          ~sessionId=sessionID,
-          ~merchantId=publishableKey,
-          ~profileId,
-          (),
-        )
+        LoggerContext.setSessionData(~sessionId=sessionID, ~merchantId=publishableKey, ())
 
         if !isReinit {
           HyperLoaderLogger.logMerchantCall(
