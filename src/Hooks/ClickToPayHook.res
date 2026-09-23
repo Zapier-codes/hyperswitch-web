@@ -33,7 +33,7 @@ let useClickToPay = (
 
   let setVisaComponentState = view => {
     SdkLogger.logState(
-      ~event=ClickToPayViewChanged({view: view->LoggerGrammar.variantName}),
+      ~event=ClickToPayViewChanged({view: view->LoggerUtils.variantName}),
       ~paymentMethod=Card(Unspecified),
     )
     setClickToPayConfig(prev => {
@@ -76,7 +76,7 @@ let useClickToPay = (
               ClickToPayLogger.logLifecycle(
                 ~event=CardsListed({
                   provider: VisaUctp,
-                  actionCode: SUCCESS->LoggerGrammar.variantName,
+                  actionCode: SUCCESS->LoggerUtils.variantName,
                   visa: brandCount("visa"),
                   mastercard: brandCount("mastercard"),
                 }),

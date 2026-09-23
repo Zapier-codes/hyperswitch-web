@@ -1,10 +1,82 @@
 open LoggerTypes
 
 let maxTextLength = 256
+let maxRowTextLength = 1024
 let maxDetailBytes = 8192
+let maxPayloadFields = 120
 
-let truncate = value =>
-  value->String.length > maxTextLength ? value->String.slice(~start=0, ~end=maxTextLength) : value
+let snakeCase = value =>
+  value
+  ->String.replaceRegExp(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+  ->String.replaceRegExp(/([a-z0-9])([A-Z])/g, "$1_$2")
+  ->String.toLowerCase
+
+let screamingSnakeCase = value =>
+  value
+  ->snakeCase
+  ->String.replaceRegExp(/[^a-zA-Z0-9]+/g, "_")
+  ->String.replaceRegExp(/^_+|_+$/g, "")
+  ->String.toUpperCase
+
+let isVariantConstructor = value => value->String.match(/^[A-Z][A-Za-z0-9]*$/)->Option.isSome
+
+let variantConstructor = value => {
+  let json = value->Identity.anyTypeToJson
+  switch json->JSON.Decode.string {
+  | Some(name) => name
+  | None =>
+    json
+    ->JSON.Decode.object
+    ->Option.flatMap(object => object->Dict.get("TAG"))
+    ->Option.flatMap(JSON.Decode.string)
+    ->Option.getOr("unknown")
+  }
+}
+
+let variantName = value => value->variantConstructor->snakeCase
+
+let variantValue = value => value->variantConstructor->screamingSnakeCase
+
+let spec = (event, ~action=Fact, ~outcome=?): eventSpec => {
+  action,
+  subject: event->variantName,
+  outcome,
+}
+
+let categorySegment = category => category->categoryName->String.toLowerCase
+
+let eventName = (~category, ~action, ~subject, ~outcome) => {
+  let step = switch (action->actionWord, outcome) {
+  | (Some(action), Some(outcome)) => Some(`${action}_${outcome->outcomeName}`)
+  | (Some(action), None) => Some(action)
+  | (None, Some(outcome)) => Some(outcome->outcomeName)
+  | (None, None) => None
+  }
+  [Some(category->categorySegment), step, Some(subject)]
+  ->Array.filterMap(segment => segment)
+  ->Array.join(".")
+}
+
+let truncateTo = (value, limit) =>
+  value->String.length > limit ? value->String.slice(~start=0, ~end=limit) : value
+
+let truncate = value => value->truncateTo(maxTextLength)
+
+let utf8Length = value => {
+  let bytes = ref(0)
+  for index in 0 to value->String.length - 1 {
+    let code = value->String.charCodeAt(index)
+    bytes :=
+      bytes.contents + if code < 128. {
+        1
+      } else if code < 2048. || (code >= 55296. && code < 57344.) {
+        2
+      } else {
+        3
+      }
+  }
+  bytes.contents
+}
 
 let sanitizeUrl = url => url->String.replaceRegExp(/[?#].*$/, "")
 
@@ -29,7 +101,7 @@ let rec normalizeJson = json =>
         switch Type.Classify.classify(value) {
         | Undefined => None
         | _ => {
-            let key = key->LoggerGrammar.snakeCase
+            let key = key->snakeCase
             Some((key, normalizeValue(key, value)))
           }
         }
@@ -42,14 +114,13 @@ let rec normalizeJson = json =>
 and normalizeValue = (key, value) =>
   switch (key, value->JSON.Decode.string) {
   | ("url" | "href" | "return_url", Some(text)) => text->sanitizeUrl->truncate->JSON.Encode.string
-  | (_, Some(text)) if text->LoggerGrammar.isVariantConstructor =>
-    text->LoggerGrammar.screamingSnakeCase->JSON.Encode.string
+  | (_, Some(text)) if text->isVariantConstructor => text->screamingSnakeCase->JSON.Encode.string
   | _ => value->normalizeJson
   }
 
 let normalizeDetails = (entries: details): details =>
   entries->Array.map(((key, value)) => {
-    let key = key->LoggerGrammar.snakeCase
+    let key = key->snakeCase
     (key, normalizeValue(key, value))
   })
 
@@ -100,16 +171,13 @@ let fitToBudget = (entries: details): details => {
   }
 }
 
-let maxPayloadFields = 120
-
 let rec collectFields = (json, ~prefix, ~into) =>
   switch JSON.Classify.classify(json) {
   | Object(object) =>
     object
     ->Dict.toArray
     ->Array.forEach(((key, value)) => {
-      let path =
-        prefix === "" ? key->LoggerGrammar.snakeCase : prefix ++ "." ++ key->LoggerGrammar.snakeCase
+      let path = prefix === "" ? key->snakeCase : prefix ++ "." ++ key->snakeCase
       switch JSON.Classify.classify(value) {
       | Object(_) | Array(_) => value->collectFields(~prefix=path, ~into)
       | _ => into->Array.push(path)
@@ -156,7 +224,7 @@ let summarizeValue = value => {
       name: object
       ->firstString(["name", "code", "type", "reason"])
       ->Option.getOr("UNKNOWN_ERROR")
-      ->LoggerGrammar.screamingSnakeCase,
+      ->screamingSnakeCase,
       message: object
       ->firstString(["message", "description", "statusMessage"])
       ->Option.map(truncate),
@@ -171,7 +239,7 @@ let summarizeExn = error =>
   | Exn.Error(jsError) =>
     switch jsError->Exn.name {
     | Some(name) => {
-        name: name->LoggerGrammar.screamingSnakeCase,
+        name: name->screamingSnakeCase,
         message: jsError->Exn.message->Option.map(truncate),
         details: [],
       }
@@ -197,7 +265,7 @@ let summarizeErrorResponse = result =>
         name: object
         ->firstString(["type", "code", "reason"])
         ->Option.getOr("ERROR_RESPONSE")
-        ->LoggerGrammar.screamingSnakeCase,
+        ->screamingSnakeCase,
         message: object->firstString(["message"])->Option.map(truncate),
         details: [
           ("error_code", object->firstString(["code"])),
@@ -270,7 +338,7 @@ let outcomeDetails = operationOutcome => {
     switch operationOutcome {
     | OpStarted | OpDone(_) | OpReturned(_) | OpTriggered(_) | OpReused(_) => []
     | OpFailed({class, error}) =>
-      [("failure_class", class->LoggerGrammar.variantValue->JSON.Encode.string)]->Array.concat(
+      [("failure_class", class->variantValue->JSON.Encode.string)]->Array.concat(
         error->Option.map(errorDetails)->Option.getOr([]),
       )
     | OpTimedOut({timeoutMs}) => timeoutMs > 0 ? [("timeout_ms", timeoutMs->JSON.Encode.int)] : []
@@ -279,7 +347,10 @@ let outcomeDetails = operationOutcome => {
 }
 
 let outcomeSeverity = (operationOutcome, ~severity) =>
-  switch operationOutcome {
-  | OpFailed({error: Some(error)}) if error->isAborted => Debug
-  | operationOutcome => severity->operationSeverityOf(~outcome=operationOutcome)
-  }
+  severity->operationSeverityOf(
+    ~outcome=operationOutcome,
+    ~isAborted=switch operationOutcome {
+    | OpFailed({error: Some(error)}) => error->isAborted
+    | _ => false
+    },
+  )

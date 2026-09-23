@@ -7,7 +7,7 @@ let submitVaultTokenization = (vault: returnValue, ~scope, ~onData) => {
   let startedAt = Date.now()
   let event = SdkLogger.VaultTokenization({scope: scope})
   let details = [("vault", "vgs"->JSON.Encode.string)]
-  let paymentMethod = LoggerTaxonomy.Card(Unspecified)
+  let paymentMethod = LoggerPaymentMethod.Card(Unspecified)
   SdkLogger.logApi(~event, ~outcome=Started, ~details, ~paymentMethod)
   let onSuccess = (_, data) => {
     SdkLogger.logApi(~event, ~outcome=Done, ~details, ~startedAt, ~paymentMethod)

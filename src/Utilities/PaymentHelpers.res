@@ -22,7 +22,7 @@ let setLoggerPaymentMethodFromBody = (~bodyArr: array<(string, JSON.t)>, ~paymen
     ->Array.find(((entryKey, _)) => entryKey === key)
     ->Option.map(((_, json)) => json->getStringFromJson(""))
     ->Option.getOr("")
-  switch LoggerTaxonomy.fromBackendPair(
+  switch LoggerPaymentMethod.fromBackendPair(
     ~method=bodyField("payment_method"),
     ~methodType=bodyField("payment_method_type"),
   ) {
@@ -209,7 +209,7 @@ let rec pollRetrievePaymentIntent = (
       SdkLogger.logLifecycle(
         ~event=status === "succeeded" ? PaymentSucceeded(outcome) : PaymentFailed(outcome),
         ~details=?status === "failed" ? Some(json->LoggerUtils.intentErrorDetails) : None,
-        ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+        ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
           ~method=dict->getString("payment_method", ""),
           ~methodType=dict->getString("payment_method_type", ""),
         ),
@@ -430,7 +430,7 @@ let rec intentCall = (
           (resolve, _) => {
             if isConfirm {
               let body = bodyStr->safeParse->getDictFromJson
-              let loggedPaymentMethod = LoggerTaxonomy.fromBackendPair(
+              let loggedPaymentMethod = LoggerPaymentMethod.fromBackendPair(
                 ~method=body->getString(
                   "payment_method",
                   switch paymentType {
@@ -552,7 +552,7 @@ let rec intentCall = (
             | Card => "card"
             | _ => intent.payment_method_type
             }
-            let loggedPaymentMethod = LoggerTaxonomy.fromBackendPair(
+            let loggedPaymentMethod = LoggerPaymentMethod.fromBackendPair(
               ~method=intentDict->getString(
                 "payment_method",
                 switch paymentType {

@@ -23,7 +23,7 @@ let logLifecycle = (
   }
   LoggerRuntime.emit(
     ~category=Lifecycle,
-    ~spec=event->LoggerGrammar.spec,
+    ~spec=event->LoggerUtils.spec,
     ~severity=event->lifecycleSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -46,7 +46,7 @@ let logState = (
 ) =>
   LoggerRuntime.emit(
     ~category=State,
-    ~spec=event->LoggerGrammar.spec,
+    ~spec=event->LoggerUtils.spec,
     ~severity=event->stateSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -72,7 +72,7 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?, ~message=?) => 
   let event = event->identify
   switch (event, paymentMethod) {
   | (PaymentMethodSelected({method}), None) =>
-    method->LoggerTaxonomy.fromBackendValue->Option.forEach(LoggerContext.setPaymentMethod)
+    method->LoggerPaymentMethod.fromBackendValue->Option.forEach(LoggerContext.setPaymentMethod)
   | (PaymentMethodSelected(_), Some(paymentMethod))
   | (SavedMethodSelected(_), Some(paymentMethod)) =>
     LoggerContext.setPaymentMethod(paymentMethod)
@@ -84,7 +84,7 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?, ~message=?) => 
   }
   LoggerRuntime.emit(
     ~category=User,
-    ~spec=event->LoggerGrammar.spec,
+    ~spec=event->LoggerUtils.spec,
     ~severity=event->userSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -97,7 +97,7 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?, ~message=?) => 
 let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Crash,
-    ~spec=origin->LoggerGrammar.spec,
+    ~spec=origin->LoggerUtils.spec,
     ~severity=origin->crashSeverity,
     ~details,
     ~exn?,
@@ -196,7 +196,7 @@ let observeApi = (
 ) =>
   LoggerRuntime.observe(
     ~category=Api,
-    ~spec=event->LoggerGrammar.spec(~action=Request),
+    ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
@@ -221,7 +221,7 @@ let observeApiWithBody = (
 ) =>
   LoggerRuntime.observe(
     ~category=Api,
-    ~spec=event->LoggerGrammar.spec(~action=Request),
+    ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
@@ -246,7 +246,7 @@ let observeStaticAsset = (
 ) =>
   LoggerRuntime.observe(
     ~category=Resource,
-    ~spec=event->LoggerGrammar.spec(~action=Load),
+    ~spec=event->LoggerUtils.spec(~action=Load),
     ~severity=event->staticAssetSeverity,
     ~data=event
     ->LoggerUtils.eventDetails
@@ -274,7 +274,7 @@ let logApi = (
 ) =>
   LoggerRuntime.emitPhase(
     ~category=Api,
-    ~spec=event->LoggerGrammar.spec(~action=Request),
+    ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~outcome,
     ~data=event->LoggerUtils.eventDetails,
@@ -296,7 +296,7 @@ let logFunction = (
 ) =>
   LoggerRuntime.emitPhase(
     ~category=Function,
-    ~spec=event->LoggerGrammar.spec(~action=Call),
+    ~spec=event->LoggerUtils.spec(~action=Call),
     ~severity=event->functionSeverity,
     ~outcome,
     ~data=event->LoggerUtils.eventDetails,
@@ -319,7 +319,7 @@ let observeFunction = (
 ) =>
   LoggerRuntime.observe(
     ~category=Function,
-    ~spec=event->LoggerGrammar.spec(~action=Call),
+    ~spec=event->LoggerUtils.spec(~action=Call),
     ~severity=event->functionSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -343,7 +343,7 @@ let observeFunctionCallback = (
 ) =>
   LoggerRuntime.observeCallback(
     ~category=Function,
-    ~spec=event->LoggerGrammar.spec(~action=Callback),
+    ~spec=event->LoggerUtils.spec(~action=Callback),
     ~severity=event->functionCallbackSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -368,7 +368,7 @@ let observeResource = (
   ~onError=_ => (),
 ) =>
   LoggerRuntime.observeResource(
-    ~spec=event->LoggerGrammar.spec(~action=Load),
+    ~spec=event->LoggerUtils.spec(~action=Load),
     ~severity=event->resourceSeverity,
     ~url,
     ~resource=event->resourceKind,

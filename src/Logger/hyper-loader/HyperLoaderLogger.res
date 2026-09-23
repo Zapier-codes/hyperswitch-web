@@ -12,7 +12,7 @@ let observeMerchantCall = (
 ) =>
   LoggerRuntime.observe(
     ~category=Merchant,
-    ~spec=event->LoggerGrammar.spec(~action=Call),
+    ~spec=event->LoggerUtils.spec(~action=Call),
     ~severity=event->merchantCallSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -34,7 +34,7 @@ let observeMerchantCallback = (
 ) =>
   LoggerRuntime.observeCallback(
     ~category=Merchant,
-    ~spec=event->LoggerGrammar.spec(~action=Callback),
+    ~spec=event->LoggerUtils.spec(~action=Callback),
     ~severity=event->merchantCallbackSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -48,7 +48,7 @@ let observeMerchantCallback = (
 let logMerchantCall = (~event: merchantCallEvent, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=event->LoggerGrammar.spec(~action=Call, ~outcome=Returned),
+    ~spec=event->LoggerUtils.spec(~action=Call, ~outcome=Returned),
     ~severity=(event->merchantCallSeverity).success,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -58,7 +58,7 @@ let logMerchantCall = (~event: merchantCallEvent, ~details=[], ~message=?) =>
 let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=event->LoggerGrammar.spec(~action=Prop),
+    ~spec=event->LoggerUtils.spec(~action=Prop),
     ~severity=event->merchantPropSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -69,7 +69,7 @@ let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~message=?) =>
 let logMerchantIssue = (~issue: merchantIssue, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=issue->LoggerGrammar.spec(~action=IntegrationIssue),
+    ~spec=issue->LoggerUtils.spec(~action=IntegrationIssue),
     ~severity=issue->merchantIssueSeverity,
     ~data=issue->LoggerUtils.eventDetails,
     ~details,

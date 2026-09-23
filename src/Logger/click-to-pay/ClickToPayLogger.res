@@ -1,12 +1,12 @@
 open LoggerTypes
 include ClickToPayLoggerEvents
 
-let paymentMethod = LoggerTaxonomy.Card(Unspecified)
+let paymentMethod = LoggerPaymentMethod.Card(Unspecified)
 
 let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?, ~message=?) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
-    ~spec=event->LoggerGrammar.spec,
+    ~spec=event->LoggerUtils.spec,
     ~severity=event->lifecycleSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -26,7 +26,7 @@ let observeFunction = (
 ) =>
   LoggerRuntime.observe(
     ~category=Function,
-    ~spec=event->LoggerGrammar.spec(~action=Call),
+    ~spec=event->LoggerUtils.spec(~action=Call),
     ~severity=event->functionSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
@@ -49,7 +49,7 @@ let observeMerchantCall = (
 ) =>
   LoggerRuntime.observe(
     ~category=Merchant,
-    ~spec=method->LoggerGrammar.spec(~action=Call),
+    ~spec=method->LoggerUtils.spec(~action=Call),
     ~severity=method->merchantCallSeverity,
     ~data=[("surface", "AUTHENTICATION_SESSION"->JSON.Encode.string)],
     ~details,
@@ -72,7 +72,7 @@ let observeApi = (
 ) =>
   LoggerRuntime.observe(
     ~category=Api,
-    ~spec=event->LoggerGrammar.spec(~action=Request),
+    ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
@@ -96,7 +96,7 @@ let observeResource = (
   ~onError=_ => (),
 ) =>
   LoggerRuntime.observeResource(
-    ~spec=event->LoggerGrammar.spec(~action=Load),
+    ~spec=event->LoggerUtils.spec(~action=Load),
     ~severity=event->resourceSeverity,
     ~url,
     ~resource=event->resourceKind,

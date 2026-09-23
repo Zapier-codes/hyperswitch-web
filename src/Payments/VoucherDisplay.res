@@ -64,7 +64,7 @@ let make = () => {
                 SdkLogger.logUser(
                   ~event=VoucherDownloadRequested,
                   ~details=autoDownloading.current ? [("auto", true->JSON.Encode.bool)] : [],
-                  ~paymentMethod=?paymentMethod->LoggerTaxonomy.fromBackendValue,
+                  ~paymentMethod=?paymentMethod->LoggerPaymentMethod.fromBackendValue,
                 )
               }}
             >

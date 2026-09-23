@@ -65,7 +65,7 @@ let intentCall = (
                 ->getDictFromJson
                 ->getString("payment_method_type", "")
               }
-              let loggedPaymentMethod = paymentMethod->LoggerTaxonomy.fromBackendValue
+              let loggedPaymentMethod = paymentMethod->LoggerPaymentMethod.fromBackendValue
               SdkLogger.logLifecycle(
                 ~event=PaymentRejected,
                 ~failure=data,
@@ -126,7 +126,7 @@ let intentCall = (
         Promise.make(
           (resolve, _) => {
             let intent = PaymentConfirmTypesV2.itemToPMMConfirmMapper(data->getDictFromJson)
-            let loggedPaymentMethod = "card"->LoggerTaxonomy.fromBackendValue
+            let loggedPaymentMethod = "card"->LoggerPaymentMethod.fromBackendValue
 
             let url = makeUrl(confirmParam.return_url)
             url.searchParams.set("status", intent.authenticationDetails.status)

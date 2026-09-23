@@ -88,7 +88,7 @@ let makeClickToPaySession = async (
   let unavailableCode = (~error: option<errorObj>, ~actionCode) =>
     error
     ->Option.flatMap(err => err.reason)
-    ->Option.getOr(actionCode->LoggerGrammar.variantName)
+    ->Option.getOr(actionCode->LoggerUtils.variantName)
 
   let getClickToPayErrorResponse = (
     ~error: option<errorObj>,
@@ -242,7 +242,7 @@ let makeClickToPaySession = async (
           ClickToPayLogger.logLifecycle(
             ~event=CardsListed({
               provider: VisaUctp,
-              actionCode: listedActionCode->LoggerGrammar.variantName,
+              actionCode: listedActionCode->LoggerUtils.variantName,
               visa,
               mastercard,
             }),
@@ -310,7 +310,7 @@ let makeClickToPaySession = async (
         ClickToPayLogger.logLifecycle(
           ~event=CardsListed({
             provider: VisaUctp,
-            actionCode: SUCCESS->LoggerGrammar.variantName,
+            actionCode: SUCCESS->LoggerUtils.variantName,
             visa,
             mastercard,
           }),

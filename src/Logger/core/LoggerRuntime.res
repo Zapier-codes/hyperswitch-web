@@ -12,7 +12,7 @@ let sourceName = source =>
   | HyperLoader => "HYPER_LOADER"
   | Headless => "HEADLESS"
   | Elements(mode) =>
-    `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerGrammar.screamingSnakeCase}`
+    `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerUtils.screamingSnakeCase}`
   }
 
 let currentSource = ref(HyperLoader->sourceName)
@@ -61,7 +61,7 @@ let emit = (
   ~exn: option<exn>=?,
   ~failure: option<'response>=?,
   ~durationMs: option<float>=?,
-  ~paymentMethod: option<LoggerTaxonomy.paymentMethod>=?,
+  ~paymentMethod: option<LoggerPaymentMethod.paymentMethod>=?,
   ~context: option<LoggerContext.t>=?,
   ~rateKey: option<string>=?,
   ~message: option<string>=?,
@@ -70,7 +70,7 @@ let emit = (
   if severity->isEnabled {
     LoggerUtils.safeRun(() => {
       let context = context->Option.getOr(LoggerContext.current())
-      let name = LoggerGrammar.eventName(
+      let name = LoggerUtils.eventName(
         ~category,
         ~action=spec.action,
         ~subject=spec.subject,
@@ -126,7 +126,12 @@ let emit = (
             ("schema_version", schemaVersion->JSON.Encode.int),
             ("profile_id", context.profileId->JSON.Encode.string),
             ("authentication_id", context.authenticationId->JSON.Encode.string),
-            ("href", Window.hrefWithoutSearch->JSON.Encode.string),
+            (
+              "href",
+              Window.hrefWithoutSearch
+              ->LoggerUtils.truncateTo(LoggerUtils.maxRowTextLength)
+              ->JSON.Encode.string,
+            ),
             ("occurrence", (seen + 1)->JSON.Encode.int),
           ]
           ->Array.concat(
@@ -153,19 +158,19 @@ let emit = (
             ("merchant_id", context.merchantId),
             ("payment_id", context.paymentId),
             ("app_id", ""),
-            ("platform", Window.Navigator.platform->LoggerGrammar.screamingSnakeCase),
-            ("user_agent", Window.Navigator.userAgent),
-            ("event_name", name),
+            ("platform", Window.Navigator.platform->LoggerUtils.screamingSnakeCase),
             (
-              "browser_name",
-              browser.name->Option.getOr("Others")->LoggerGrammar.screamingSnakeCase,
+              "user_agent",
+              Window.Navigator.userAgent->LoggerUtils.truncateTo(LoggerUtils.maxRowTextLength),
             ),
+            ("event_name", name),
+            ("browser_name", browser.name->Option.getOr("Others")->LoggerUtils.screamingSnakeCase),
             ("browser_version", browser.version->Option.getOr("0")),
             ("latency", durationMs->Option.map(value => value->Float.toString)->Option.getOr("")),
             ("first_event", (seen === 0)->LoggerUtils.stringOfBool),
             (
               "payment_method",
-              paymentMethod->Option.map(LoggerTaxonomy.qualifiedName)->Option.getOr(""),
+              paymentMethod->Option.map(LoggerPaymentMethod.qualifiedName)->Option.getOr(""),
             ),
           ]
           ->Array.map(((key, value)) => (key, value->JSON.Encode.string))

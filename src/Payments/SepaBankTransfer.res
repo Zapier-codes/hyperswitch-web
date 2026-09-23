@@ -44,7 +44,7 @@ let make = () => {
         let message = "Please enter all fields"
         SdkLogger.logLifecycle(
           ~event=FormValidationFailed({reason: "Please enter all fields"}),
-          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+          ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
             ~method=paymentMethod,
             ~methodType=paymentMethodType,
           ),

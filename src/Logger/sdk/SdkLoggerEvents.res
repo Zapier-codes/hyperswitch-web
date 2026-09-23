@@ -311,7 +311,7 @@ type submitData = {source: submitSource}
 
 type verificationData = {
   source: verificationSource,
-  provider: option<LoggerTaxonomy.clickToPayProvider>,
+  provider: option<ClickToPayLoggerEvents.provider>,
 }
 
 type userEvent =
@@ -395,7 +395,7 @@ let apiSeverity = value =>
   | Sessions
   | TaxCalculation
   | PaymentMethodEligibility
-  | PollStatus => {success: Info, failure: Warning}
+  | PollStatus => {...defaultSeverity, failure: Warning}
   | RetrievePaymentIntent
   | ConfirmCall
   | ConfirmPayoutCall
@@ -411,7 +411,7 @@ let apiSeverity = value =>
   | PaymentMethodsAuthLink
   | PaymentMethodsAuthExchange
   | ClientList
-  | VaultTokenization(_) => {success: Info, failure: Error}
+  | VaultTokenization(_) => defaultSeverity
   }
 
 // Function
@@ -432,7 +432,7 @@ type functionEvent =
 
 let functionSeverity = value =>
   switch value {
-  | IsReadyToPay => {success: Debug, failure: Warning}
+  | IsReadyToPay => {...defaultSeverity, success: Debug, failure: Warning}
   | LoadPaymentSheet
   | LoadPaymentData
   | FinishApplePaymentV2
@@ -443,7 +443,7 @@ let functionSeverity = value =>
   | KlarnaLoad
   | PaypalButtonsRender
   | PlaidCreate
-  | VaultFormCreate => {success: Debug, failure: Error}
+  | VaultFormCreate => {...defaultSeverity, success: Debug}
   }
 
 // Function callback
@@ -474,14 +474,14 @@ let functionCallbackSeverity = value =>
   | OnClick
   | OnCancel
   | OnExit
-  | OnLoad => {success: Debug, failure: Warning}
+  | OnLoad => {...defaultSeverity, success: Debug, failure: Warning}
   | OnValidateMerchant
   | OnPaymentAuthorized
   | CreateOrder
   | CreateBillingAgreement
   | OnApprove
   | OnSuccess
-  | OnError => {success: Debug, failure: Error}
+  | OnError => {...defaultSeverity, success: Debug}
   }
 
 // Resource
@@ -502,7 +502,7 @@ type resourceEvent =
 
 let resourceSeverity = value =>
   switch value {
-  | VaultScript => {success: Debug, failure: Error}
+  | VaultScript => {...defaultSeverity, success: Debug}
   | GooglePayScript
   | SamsungPayScript
   | ApplePayScript
@@ -513,7 +513,7 @@ let resourceSeverity = value =>
   | BraintreeClientScript
   | BraintreeApplePayScript
   | PmAuthConnectorScript
-  | FontStylesheet => {success: Debug, failure: Warning}
+  | FontStylesheet => {...defaultSeverity, success: Debug, failure: Warning}
   }
 
 let resourceKind = (value): ResourceLoader.resource =>
@@ -530,8 +530,8 @@ type staticAssetEvent =
 
 let staticAssetSeverity = value =>
   switch value {
-  | SdkConfigs => {success: Debug, failure: Error}
-  | CountryStateData => {success: Debug, failure: Warning}
+  | SdkConfigs => {...defaultSeverity, success: Debug}
+  | CountryStateData => {...defaultSeverity, success: Debug, failure: Warning}
   }
 
 // Crash

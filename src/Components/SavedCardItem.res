@@ -280,7 +280,7 @@ let make = (
             isCardExpired,
           }),
           ~details=logSelectionDetails,
-          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+          ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
             ~method=paymentItem.paymentMethod,
             ~methodType=paymentMethodType,
           ),

@@ -135,7 +135,7 @@ module ErrorCard = {
       LoggerContext.setSessionData(~merchantId=publishableKey, ())
       let details = [
         ("component", componentName->JSON.Encode.string),
-        ("boundary_level", level->LoggerGrammar.variantName->JSON.Encode.string),
+        ("boundary_level", level->LoggerUtils.variantName->JSON.Encode.string),
         (
           "component_stack",
           error.componentStack

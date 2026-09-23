@@ -59,7 +59,7 @@ let merchantCallSeverity = event =>
   | ConfirmWithLastUsedPaymentMethod(_)
   | PaymentRequest(_)
   | Tokenize(_)
-  | ConfirmTokenization(_) => {success: Info, failure: Error}
+  | ConfirmTokenization(_) => defaultSeverity
   | Init(_)
   | Reinit(_)
   | Deinit(_)
@@ -84,7 +84,7 @@ let merchantCallSeverity = event =>
   | UpdateIntent(_)
   | InitiateUpdateIntent(_)
   | CompleteUpdateIntent(_)
-  | FetchUpdates(_) => {success: Debug, failure: Error}
+  | FetchUpdates(_) => {...defaultSeverity, success: Debug}
   }
 
 // Merchant prop
@@ -127,7 +127,7 @@ type merchantCallbackEvent =
 let merchantCallbackSeverity = event =>
   switch event {
   | OnSdkHandleClick(_)
-  | UpdateIntent(_) => {success: Debug, failure: Warning}
+  | UpdateIntent(_) => {...defaultSeverity, success: Debug, failure: Warning}
   }
 
 // Merchant issue

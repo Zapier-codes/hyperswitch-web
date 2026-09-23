@@ -75,7 +75,7 @@ let make = (~paymentMethodType) => {
         ~event=FormValidationFailed({
           reason: "Please add Bank Details and then confirm payment with the added payment methods.",
         }),
-        ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+        ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
           ~method="bank_debit",
           ~methodType=paymentMethodType,
         ),

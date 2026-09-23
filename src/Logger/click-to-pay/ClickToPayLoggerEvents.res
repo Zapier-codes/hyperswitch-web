@@ -2,7 +2,11 @@ open LoggerTypes
 
 // Shared
 
-type provider = LoggerTaxonomy.clickToPayProvider
+type provider =
+  | VisaUctp
+  | VisaDirect
+  | MastercardUctp
+  | MastercardDirect
 
 type providerDetails = {provider: provider}
 
@@ -73,11 +77,11 @@ let functionSeverity = event =>
   | GetCards(_)
   | Authenticate(_)
   | UnbindAppInstance(_)
-  | SignOut(_) => {success: Debug, failure: Warning}
+  | SignOut(_) => {...defaultSeverity, success: Debug, failure: Warning}
   | EncryptCard(_)
   | Checkout(_)
   | CheckoutWithCard(_)
-  | CheckoutWithNewCard(_) => {success: Debug, failure: Error}
+  | CheckoutWithNewCard(_) => {...defaultSeverity, success: Debug}
   }
 
 // Merchant call
@@ -94,14 +98,14 @@ type merchantMethod =
 
 let merchantCallSeverity = (method: merchantMethod) =>
   switch method {
-  | CheckoutWithCard => {success: Info, failure: Error}
+  | CheckoutWithCard => defaultSeverity
   | InitSession
   | GetActiveSession
   | IsCustomerPresent
   | GetUserType
   | GetRecognizedCards
   | ValidateAuthentication
-  | SignOut => {success: Debug, failure: Warning}
+  | SignOut => {...defaultSeverity, success: Debug, failure: Warning}
   }
 
 // Api
@@ -115,7 +119,7 @@ let apiSeverity = event =>
   switch event {
   | EnabledAuthnMethodsToken
   | EligibilityCheck
-  | AuthenticationSync => {success: Info, failure: Error}
+  | AuthenticationSync => defaultSeverity
   }
 
 // Resource
@@ -131,7 +135,7 @@ let resourceSeverity = event =>
   | VisaSdkScript
   | MastercardSdkScript
   | UiKitScript
-  | UiKitStylesheet => {success: Debug, failure: Warning}
+  | UiKitStylesheet => {...defaultSeverity, success: Debug, failure: Warning}
   }
 
 let resourceKind = (value): ResourceLoader.resource =>

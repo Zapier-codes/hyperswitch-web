@@ -1,6 +1,6 @@
 let flushDelayMs = 2000
 
-let maxBatchBytes = 60000
+let maxBatchBytes = 30000
 
 let maxQueuedRows = 100
 
@@ -39,7 +39,7 @@ let take = count => {
   taken
 }
 
-let rowBytes = row => row->JSON.stringify->String.length + 1
+let rowBytes = row => row->JSON.stringify->LoggerUtils.utf8Length + 1
 
 let recountBytes = () =>
   queue.queuedBytes = queue.rows->Array.reduce(0, (total, row) => total + row->rowBytes)
@@ -76,7 +76,7 @@ let requeue = batch => {
   }
 }
 
-let maxSendAttemptsPerBatch = 8
+let maxSendAttemptsPerBatch = 4
 
 let rec flush = () => {
   clearTimer()

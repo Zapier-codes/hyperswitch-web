@@ -46,7 +46,7 @@ let useHandlePostMessages = (
       } else if !wasComplete.current && sawIncomplete.current {
         SdkLogger.logState(
           ~event=PaymentFormCompleted({savedMethod: savedMethod}),
-          ~paymentMethod=?paymentType->LoggerTaxonomy.fromBackendValue,
+          ~paymentMethod=?paymentType->LoggerPaymentMethod.fromBackendValue,
         )
       }
     }

@@ -63,7 +63,7 @@ let make = (
     "hyper_" ++
     flowType
     ->CardThemeType.getPaymentModeToStrMapper
-    ->LoggerGrammar.snakeCase
+    ->LoggerUtils.snakeCase
   let paymentMethod = isBancontact ? "bank_redirect" : "card"
   let paymentMethodType = isBancontact ? "bancontact_card" : "debit"
 
@@ -791,7 +791,7 @@ let make = (
       if confirm.doSubmit && !hasCardFieldStatus {
         SdkLogger.logLifecycle(
           ~event=FormValidationFailed({reason: localeString.enterFieldsText}),
-          ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+          ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
             ~method=paymentMethod,
             ~methodType=paymentMethodType,
           ),
@@ -920,7 +920,7 @@ let make = (
               let message = "Something went wrong"
               SdkLogger.logLifecycle(
                 ~event=VaultFlowFailed({reason: TokenizationFailed}),
-                ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+                ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
                   ~method=paymentMethod,
                   ~methodType=paymentMethodType,
                 ),
@@ -957,7 +957,7 @@ let make = (
           let setUserError = message => {
             SdkLogger.logLifecycle(
               ~event=FormValidationFailed({reason: message}),
-              ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+              ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
                 ~method=paymentMethod,
                 ~methodType=paymentMethodType,
               ),

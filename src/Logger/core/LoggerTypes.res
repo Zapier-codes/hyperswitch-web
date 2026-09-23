@@ -95,12 +95,32 @@ let durationOf = operationOutcome =>
   | OpTimedOut({durationMs}) => Some(durationMs)
   }
 
-type operationSeverity = {success: severity, failure: severity}
+type operationSeverity = {
+  start: severity,
+  success: severity,
+  failure: severity,
+  reused: severity,
+  aborted: severity,
+}
 
-let operationSeverityOf = ({success, failure}, ~outcome: operationOutcome) =>
+let defaultSeverity = {
+  start: Debug,
+  success: Info,
+  failure: Error,
+  reused: Debug,
+  aborted: Debug,
+}
+
+let operationSeverityOf = (
+  {start, success, failure, reused, aborted},
+  ~outcome: operationOutcome,
+  ~isAborted,
+) =>
   switch outcome {
-  | OpStarted | OpReused(_) => Debug
+  | OpStarted => start
   | OpDone(_) | OpReturned(_) | OpTriggered(_) => success
+  | OpReused(_) => reused
+  | OpFailed(_) if isAborted => aborted
   | OpFailed(_) | OpTimedOut(_) => failure
   }
 
@@ -123,8 +143,6 @@ let categoryName = category =>
   | Function => "FUNCTION"
   | Lifecycle => "LIFECYCLE"
   }
-
-let categorySegment = category => category->categoryName->String.toLowerCase
 
 let actionWord = action =>
   switch action {

@@ -4,7 +4,7 @@ type t = {
   profileId: string,
   paymentId: string,
   authenticationId: string,
-  paymentMethod: option<LoggerTaxonomy.paymentMethod>,
+  paymentMethod: option<LoggerPaymentMethod.paymentMethod>,
 }
 
 let empty = {
@@ -76,7 +76,9 @@ let setSessionData = (
 let setPaymentMethod = paymentMethod =>
   context := {
       ...context.contents,
-      paymentMethod: Some(context.contents.paymentMethod->LoggerTaxonomy.refine(paymentMethod)),
+      paymentMethod: Some(
+        context.contents.paymentMethod->LoggerPaymentMethod.refine(paymentMethod),
+      ),
     }
 
 let paymentIdOfClientSecret = clientSecret =>

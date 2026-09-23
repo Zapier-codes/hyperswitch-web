@@ -161,7 +161,7 @@ let make = (~walletOptions) => {
         } else if areRequiredFieldsEmpty {
           SdkLogger.logLifecycle(
             ~event=FormValidationFailed({reason: localeString.enterFieldsText}),
-            ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
               ~method=paymentMethod,
               ~methodType=paymentMethodType,
             ),
@@ -173,7 +173,7 @@ let make = (~walletOptions) => {
         } else if !areRequiredFieldsValid {
           SdkLogger.logLifecycle(
             ~event=FormValidationFailed({reason: localeString.enterValidDetailsText}),
-            ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+            ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
               ~method=paymentMethod,
               ~methodType=paymentMethodType,
             ),

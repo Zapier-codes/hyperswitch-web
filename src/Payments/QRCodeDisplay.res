@@ -76,7 +76,7 @@ let make = () => {
           let metaDataDict = metadata->JSON.Decode.object->Option.getOr(Dict.make())
 
           let paymentMethodStr = metaDataDict->getString("paymentMethod", "")
-          loggedPaymentMethodRef.current = paymentMethodStr->LoggerTaxonomy.fromBackendValue
+          loggedPaymentMethodRef.current = paymentMethodStr->LoggerPaymentMethod.fromBackendValue
           let parsedPaymentMethod = parsePaymentMethod(paymentMethodStr)
 
           let defaultConfig = getPaymentMethodConfig(parsedPaymentMethod)

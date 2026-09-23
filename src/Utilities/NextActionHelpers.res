@@ -10,7 +10,7 @@ let handleDDC = (
 ) => {
   let {iframeUrl, timeoutMs} = ddcData->Option.getOr(PaymentConfirmTypes.defaultDdcData)
 
-  let loggedPaymentMethod = paymentMethod->LoggerTaxonomy.fromBackendValue
+  let loggedPaymentMethod = paymentMethod->LoggerPaymentMethod.fromBackendValue
 
   messageParentWindow([
     ("fullscreen", true->JSON.Encode.bool),

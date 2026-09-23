@@ -69,7 +69,7 @@ let make = (
         requiresCvv: shouldRenderCVV,
         isCardExpired,
       }),
-      ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
+      ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
         ~method=paymentMethodType,
         ~methodType=paymentItem.paymentMethodSubType,
       ),
