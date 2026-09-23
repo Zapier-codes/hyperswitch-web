@@ -182,7 +182,7 @@ let make = (
   ~isTestMode=false,
   ~isSdkParamsEnabled=false,
 ) => {
-  HyperLoaderLogger.startSession(~sessionId, ~merchantId=publishableKey)
+  LoggerContext.setSessionData(~sessionId, ~merchantId=publishableKey, ())
 
   switch hyperComponentName {
   | Elements =>

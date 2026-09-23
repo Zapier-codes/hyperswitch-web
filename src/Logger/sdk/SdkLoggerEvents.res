@@ -66,6 +66,8 @@ type ddcFailureData = {reason: ddcFailure}
 
 type paymentOutcomeData = {status: string, manualRetryAllowed?: bool}
 
+type bankAuthSyncFailureData = {status: string}
+
 type customerRedirectData = {nextAction: string, redirectMode?: string, redirectOrigin: string}
 
 type redirectFailureData = {nextAction: string, recovered: bool}
@@ -99,7 +101,7 @@ type lifecycleEvent =
   | WalletFlowExited
   | WalletTokenReceived
   | VaultFlowFailed(vaultFailureData)
-  | BankAuthSyncFailed({status: string})
+  | BankAuthSyncFailed(bankAuthSyncFailureData)
   | BankAuthConnectorUnsupported(unsupportedConnectorData)
   | CustomerRedirectStarted(customerRedirectData)
   | RedirectUnsupported(redirectFailureData)
