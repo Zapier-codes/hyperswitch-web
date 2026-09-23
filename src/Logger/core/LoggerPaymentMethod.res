@@ -1,7 +1,4 @@
-type cardType =
-  | Credit
-  | Debit
-  | Unspecified
+type cardType = Unspecified
 
 type walletType =
   | GooglePay
@@ -10,18 +7,8 @@ type walletType =
   | Paypal
   | PaypalSdk
   | Paze
-  | Venmo
-  | Unspecified
 
-type payLaterType =
-  | Klarna
-  | Affirm
-  | AfterpayClearpay
-  | PayBright
-  | Walley
-  | Alma
-  | Atome
-  | Unspecified
+type payLaterType = Klarna
 
 type openBankingType =
   | Plaid
@@ -47,11 +34,7 @@ let qualifiedName = value => {
   let qualify = subtype => `${family}.${subtype->LoggerUtils.variantName}`
   switch value {
   | Dynamic(raw) => raw->LoggerUtils.snakeCase
-  | Card(Unspecified)
-  | Wallet(Unspecified)
-  | PayLater(Unspecified)
-  | OpenBanking(Unspecified) => family
-  | Card(subtype) => subtype->qualify
+  | Card(Unspecified) | OpenBanking(Unspecified) => family
   | Wallet(subtype) => subtype->qualify
   | PayLater(subtype) => subtype->qualify
   | OpenBanking(subtype) => subtype->qualify

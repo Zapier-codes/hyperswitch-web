@@ -38,7 +38,6 @@ let logLifecycle = (
 let logState = (
   ~event: stateEvent,
   ~details=[],
-  ~exn=?,
   ~failure=?,
   ~durationMs=?,
   ~paymentMethod=?,
@@ -50,7 +49,6 @@ let logState = (
     ~severity=event->stateSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
-    ~exn?,
     ~failure?,
     ~durationMs?,
     ~paymentMethod?,
@@ -183,67 +181,35 @@ let catchGlobalCrashes = (~ownsDocument) => {
   })
 }
 
-let observeApi = (
-  ~event: apiEvent,
-  ~url,
-  ~details=[],
-  ~timeoutMs=?,
-  ~failureOf=LoggerUtils.httpFailure,
-  ~detailsOf=LoggerUtils.httpDetails,
-  ~paymentMethod=?,
-  ~message=?,
-  ~call,
-) =>
+let observeApi = (~event: apiEvent, ~url, ~details=[], ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Api,
     ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
-    ~timeoutMs?,
-    ~failureOf,
-    ~detailsOf,
-    ~paymentMethod?,
+    ~failureOf=LoggerUtils.httpFailure,
+    ~detailsOf=LoggerUtils.httpDetails,
     ~message?,
     ~call,
   )
 
 // Same as observeApi for calls that resolve to `(response, parsedBody)`, so the
 // failure summary can read the error body, not just the status code.
-let observeApiWithBody = (
-  ~event: apiEvent,
-  ~url,
-  ~details=[],
-  ~timeoutMs=?,
-  ~paymentMethod=?,
-  ~message=?,
-  ~call,
-) =>
+let observeApiWithBody = (~event: apiEvent, ~url, ~details=[], ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Api,
     ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
     ~details,
-    ~timeoutMs?,
     ~failureOf=LoggerUtils.httpBodyFailure,
     ~detailsOf=LoggerUtils.httpBodyDetails,
-    ~paymentMethod?,
     ~message?,
     ~call,
   )
 
-let observeStaticAsset = (
-  ~event: staticAssetEvent,
-  ~url,
-  ~details=[],
-  ~timeoutMs=?,
-  ~failureOf=LoggerUtils.httpFailure,
-  ~detailsOf=LoggerUtils.httpDetails,
-  ~paymentMethod=?,
-  ~message=?,
-  ~call,
-) =>
+let observeStaticAsset = (~event: staticAssetEvent, ~url, ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Resource,
     ~spec=event->LoggerUtils.spec(~action=Load),
@@ -254,11 +220,8 @@ let observeStaticAsset = (
       ("url", url->JSON.Encode.string),
       ("resource_type", "static_asset"->JSON.Encode.string),
     ]),
-    ~details,
-    ~timeoutMs?,
-    ~failureOf,
-    ~detailsOf,
-    ~paymentMethod?,
+    ~failureOf=LoggerUtils.httpFailure,
+    ~detailsOf=LoggerUtils.httpDetails,
     ~message?,
     ~call,
   )
@@ -311,8 +274,6 @@ let observeFunction = (
   ~event: functionEvent,
   ~details=[],
   ~timeoutMs=?,
-  ~failureOf=?,
-  ~detailsOf=?,
   ~paymentMethod=?,
   ~message=?,
   ~call,
@@ -324,8 +285,6 @@ let observeFunction = (
     ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
-    ~failureOf?,
-    ~detailsOf?,
     ~paymentMethod?,
     ~message?,
     ~call,
@@ -335,8 +294,6 @@ let observeFunctionCallback = (
   ~event: functionCallbackEvent,
   ~details=[],
   ~timeoutMs=?,
-  ~failureOf=?,
-  ~detailsOf=?,
   ~paymentMethod=?,
   ~message=?,
   ~callback,
@@ -348,8 +305,6 @@ let observeFunctionCallback = (
     ~data=event->LoggerUtils.eventDetails,
     ~details,
     ~timeoutMs?,
-    ~failureOf?,
-    ~detailsOf?,
     ~paymentMethod?,
     ~message?,
     ~callback,
@@ -360,7 +315,6 @@ let observeResource = (
   ~url,
   ~attributes=[],
   ~matchQuery=false,
-  ~dedupe=true,
   ~paymentMethod=?,
   ~abandoned=() => false,
   ~message=?,
@@ -374,7 +328,6 @@ let observeResource = (
     ~resource=event->resourceKind,
     ~attributes,
     ~matchQuery,
-    ~dedupe,
     ~paymentMethod?,
     ~abandoned,
     ~message?,

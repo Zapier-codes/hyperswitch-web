@@ -15,22 +15,12 @@ let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?, ~message=?) =>
     ~message?,
   )
 
-let observeFunction = (
-  ~event: functionEvent,
-  ~details=[],
-  ~timeoutMs=?,
-  ~detailsOf=?,
-  ~paymentMethod=paymentMethod,
-  ~message=?,
-  ~call,
-) =>
+let observeFunction = (~event: functionEvent, ~detailsOf=?, ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Function,
     ~spec=event->LoggerUtils.spec(~action=Call),
     ~severity=event->functionSeverity,
     ~data=event->LoggerUtils.eventDetails,
-    ~details,
-    ~timeoutMs?,
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
@@ -38,22 +28,13 @@ let observeFunction = (
     ~call,
   )
 
-let observeMerchantCall = (
-  ~method: merchantMethod,
-  ~details=[],
-  ~timeoutMs=?,
-  ~detailsOf=?,
-  ~paymentMethod=paymentMethod,
-  ~message=?,
-  ~call,
-) =>
+let observeMerchantCall = (~method: merchantMethod, ~details=[], ~detailsOf=?, ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Merchant,
     ~spec=method->LoggerUtils.spec(~action=Call),
     ~severity=method->merchantCallSeverity,
     ~data=[("surface", "AUTHENTICATION_SESSION"->JSON.Encode.string)],
     ~details,
-    ~timeoutMs?,
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
@@ -61,23 +42,14 @@ let observeMerchantCall = (
     ~call,
   )
 
-let observeApi = (
-  ~event: apiEvent,
-  ~url,
-  ~details=[],
-  ~failureOf=LoggerUtils.httpFailure,
-  ~detailsOf=LoggerUtils.httpDetails,
-  ~message=?,
-  ~call,
-) =>
+let observeApi = (~event: apiEvent, ~url, ~message=?, ~call) =>
   LoggerRuntime.observe(
     ~category=Api,
     ~spec=event->LoggerUtils.spec(~action=Request),
     ~severity=event->apiSeverity,
     ~data=event->LoggerUtils.eventDetails->Array.concat([("url", url->JSON.Encode.string)]),
-    ~details,
-    ~failureOf,
-    ~detailsOf,
+    ~failureOf=LoggerUtils.httpFailure,
+    ~detailsOf=LoggerUtils.httpDetails,
     ~paymentMethod,
     ~message?,
     ~call,
@@ -86,11 +58,7 @@ let observeApi = (
 let observeResource = (
   ~event: resourceEvent,
   ~url,
-  ~attributes=[],
   ~matchQuery=false,
-  ~dedupe=true,
-  ~timeoutMs=?,
-  ~abandoned=?,
   ~message=?,
   ~onLoad=() => (),
   ~onError=_ => (),
@@ -100,11 +68,7 @@ let observeResource = (
     ~severity=event->resourceSeverity,
     ~url,
     ~resource=event->resourceKind,
-    ~attributes,
     ~matchQuery,
-    ~dedupe,
-    ~timeoutMs?,
-    ~abandoned?,
     ~paymentMethod,
     ~message?,
     ~onLoad,

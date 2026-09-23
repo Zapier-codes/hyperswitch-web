@@ -25,10 +25,7 @@ let observeMerchantCall = (
 
 let observeMerchantCallback = (
   ~event: merchantCallbackEvent,
-  ~details=[],
   ~timeoutMs=?,
-  ~failureOf=LoggerUtils.summarizeErrorResponse,
-  ~detailsOf=?,
   ~message=?,
   ~callback,
 ) =>
@@ -37,10 +34,8 @@ let observeMerchantCallback = (
     ~spec=event->LoggerUtils.spec(~action=Callback),
     ~severity=event->merchantCallbackSeverity,
     ~data=event->LoggerUtils.eventDetails,
-    ~details,
     ~timeoutMs?,
-    ~failureOf,
-    ~detailsOf?,
+    ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~message?,
     ~callback,
   )

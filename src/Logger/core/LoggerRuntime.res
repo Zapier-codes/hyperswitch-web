@@ -414,7 +414,6 @@ let observeCallback = (
   ~details: details=[],
   ~timeoutMs=?,
   ~failureOf=?,
-  ~detailsOf=?,
   ~paymentMethod=?,
   ~message=?,
   ~callback: 'fn,
@@ -428,7 +427,6 @@ let observeCallback = (
       ~details,
       ~timeoutMs?,
       ~failureOf?,
-      ~detailsOf?,
       ~paymentMethod?,
       ~syncOutcome=Triggered,
       ~message?,
@@ -443,8 +441,6 @@ let observeResource = (
   ~resource,
   ~attributes=[],
   ~matchQuery=false,
-  ~dedupe=true,
-  ~timeoutMs=defaultTimeoutMs,
   ~paymentMethod=?,
   ~abandoned=() => false,
   ~message=?,
@@ -457,8 +453,8 @@ let observeResource = (
   let base = [
     ("url", url->JSON.Encode.string),
     ("resource_type", resource->ResourceLoader.resourceName->JSON.Encode.string),
-    ("configured_timeout_ms", timeoutMs->JSON.Encode.int),
-    ("deduped", dedupe->JSON.Encode.bool),
+    ("configured_timeout_ms", defaultTimeoutMs->JSON.Encode.int),
+    ("deduped", true->JSON.Encode.bool),
   ]
 
   let emitStep = (operationOutcome, ~details=[]) =>
@@ -493,11 +489,11 @@ let observeResource = (
       if tracker->settle {
         start()
         emitStep(
-          OpTimedOut({durationMs: tracker->elapsed, timeoutMs}),
+          OpTimedOut({durationMs: tracker->elapsed, timeoutMs: defaultTimeoutMs}),
           ~details=abandoned() ? [("abandoned", true->JSON.Encode.bool)] : [],
         )
       }
-    , timeoutMs))
+    , defaultTimeoutMs))
 
   let handleLoad = (result: ResourceLoader.loadResult) => {
     if tracker->settle {
@@ -526,7 +522,6 @@ let observeResource = (
     ~resource,
     ~attributes,
     ~matchQuery,
-    ~dedupe,
     ~onStart=start,
     ~onLoad=handleLoad,
     ~onError=handleError,
