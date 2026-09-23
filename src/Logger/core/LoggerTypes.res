@@ -31,30 +31,19 @@ type outcome =
   | Failed
   | TimedOut
 
-type action = string
-
-let call = "call"
-let callback = "callback"
-let load = "load"
-let request = "request"
+type action =
+  | Fact
+  | Call
+  | Callback
+  | Load
+  | Request
+  | Prop
+  | IntegrationIssue
 
 type eventSpec = {
-  action: option<action>,
-  subject: string,
-  outcome: option<outcome>,
-}
-
-type operationSpec = {
   action: action,
   subject: string,
-}
-
-let makeOperation = (action, subject) => {action, subject}
-
-let toEventSpec = (spec: operationSpec, ~outcome: option<outcome>=?): eventSpec => {
-  action: Some(spec.action),
-  subject: spec.subject,
-  outcome,
+  outcome: option<outcome>,
 }
 
 type failureClass =
@@ -136,6 +125,17 @@ let categoryName = category =>
   }
 
 let categorySegment = category => category->categoryName->String.toLowerCase
+
+let actionWord = action =>
+  switch action {
+  | Fact => None
+  | Call => Some("call")
+  | Callback => Some("callback")
+  | Load => Some("load")
+  | Request => Some("request")
+  | Prop => Some("prop")
+  | IntegrationIssue => Some("integration_issue")
+  }
 
 let outcomeName = outcome =>
   switch outcome {

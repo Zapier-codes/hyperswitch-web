@@ -61,16 +61,6 @@ let batchSize = () => {
   count.contents
 }
 
-let send = rows =>
-  GlobalVars.logEndpoint->String.trim === "" || !Window.Navigator.hasSendBeacon()
-    ? false
-    : try Window.Navigator.sendBeacon(
-        GlobalVars.logEndpoint,
-        rows->JSON.Encode.array->JSON.stringify,
-      ) catch {
-      | _ => false
-      }
-
 let retryDelayMs = () =>
   switch queue.failures {
   | 0 => flushDelayMs
@@ -95,7 +85,7 @@ let rec flush = () => {
   | 0 => queue.queuedBytes = 0
   | size => {
       let batch = size->take
-      if batch->send {
+      if batch->LoggerTransport.send {
         queue.failures = 0
       } else {
         queue.failures = queue.failures + 1
@@ -146,7 +136,7 @@ let backfillContext = (~sessionId, ~merchantId, ~paymentId) => {
       let fill = (key, value) =>
         if (
           value !== "" &&
-          object->Dict.get(key)->Option.flatMap(JSON.Decode.string)->Option.getOr("") === ""
+            object->Dict.get(key)->Option.flatMap(JSON.Decode.string)->Option.getOr("") === ""
         ) {
           object->Dict.set(key, value->JSON.Encode.string)
         }

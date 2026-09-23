@@ -3,19 +3,6 @@ open LoggerTypes
 let maxTextLength = 256
 let maxDetailBytes = 8192
 
-let snakeCase = value =>
-  value
-  ->String.replaceRegExp(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-  ->String.replaceRegExp(/([a-z0-9])([A-Z])/g, "$1_$2")
-  ->String.toLowerCase
-
-let screamingSnakeCase = value =>
-  value
-  ->snakeCase
-  ->String.replaceRegExp(/[^a-zA-Z0-9]+/g, "_")
-  ->String.replaceRegExp(/^_+|_+$/g, "")
-  ->String.toUpperCase
-
 let truncate = value =>
   value->String.length > maxTextLength ? value->String.slice(~start=0, ~end=maxTextLength) : value
 
@@ -27,55 +14,6 @@ let safeRun = action =>
   }
 
 let stringOfBool = value => value ? "true" : "false"
-
-let variantConstructor = value => {
-  let json = value->Identity.anyTypeToJson
-  switch json->JSON.Decode.string {
-  | Some(name) => name
-  | None =>
-    json
-    ->JSON.Decode.object
-    ->Option.flatMap(object => object->Dict.get("TAG"))
-    ->Option.flatMap(JSON.Decode.string)
-    ->Option.getOr("unknown")
-  }
-}
-
-let variantName = value => value->variantConstructor->snakeCase
-
-let variantValue = value => value->variantConstructor->screamingSnakeCase
-
-let isVariantConstructor = value => value->String.match(/^[A-Z][A-Za-z0-9]*$/)->Option.isSome
-
-let deriveEvent = (value): eventSpec => {
-  action: None,
-  subject: value->variantConstructor->snakeCase,
-  outcome: None,
-}
-
-let deriveFailure = (value): eventSpec => {
-  action: None,
-  subject: value->variantName,
-  outcome: Some(Failed),
-}
-
-let splitTrailingWord = constructor =>
-  constructor
-  ->String.match(/^([A-Z][A-Za-z0-9]*?)([A-Z][a-z0-9]*)$/)
-  ->Option.flatMap(matches =>
-    switch (matches->Array.get(1), matches->Array.get(2)) {
-    | (Some(Some(subject)), Some(Some(action))) => Some((action->snakeCase, subject->snakeCase))
-    | _ => None
-    }
-  )
-
-let deriveNotification = (value): eventSpec => {
-  let constructor = value->variantConstructor
-  switch constructor->splitTrailingWord {
-  | Some((action, subject)) => {action: Some(action), subject, outcome: None}
-  | None => {action: None, subject: constructor->snakeCase, outcome: None}
-  }
-}
 
 let rec normalizeJson = json =>
   switch Type.Classify.classify(json) {
@@ -91,7 +29,7 @@ let rec normalizeJson = json =>
         switch Type.Classify.classify(value) {
         | Undefined => None
         | _ => {
-            let key = key->snakeCase
+            let key = key->LoggerGrammar.snakeCase
             Some((key, normalizeValue(key, value)))
           }
         }
@@ -104,13 +42,14 @@ let rec normalizeJson = json =>
 and normalizeValue = (key, value) =>
   switch (key, value->JSON.Decode.string) {
   | ("url" | "href" | "return_url", Some(text)) => text->sanitizeUrl->truncate->JSON.Encode.string
-  | (_, Some(text)) if text->isVariantConstructor => text->screamingSnakeCase->JSON.Encode.string
+  | (_, Some(text)) if text->LoggerGrammar.isVariantConstructor =>
+    text->LoggerGrammar.screamingSnakeCase->JSON.Encode.string
   | _ => value->normalizeJson
   }
 
 let normalizeDetails = (entries: details): details =>
   entries->Array.map(((key, value)) => {
-    let key = key->snakeCase
+    let key = key->LoggerGrammar.snakeCase
     (key, normalizeValue(key, value))
   })
 
@@ -169,7 +108,8 @@ let rec collectFields = (json, ~prefix, ~into) =>
     object
     ->Dict.toArray
     ->Array.forEach(((key, value)) => {
-      let path = prefix === "" ? key->snakeCase : prefix ++ "." ++ key->snakeCase
+      let path =
+        prefix === "" ? key->LoggerGrammar.snakeCase : prefix ++ "." ++ key->LoggerGrammar.snakeCase
       switch JSON.Classify.classify(value) {
       | Object(_) | Array(_) => value->collectFields(~prefix=path, ~into)
       | _ => into->Array.push(path)
@@ -216,7 +156,7 @@ let summarizeValue = value => {
       name: object
       ->firstString(["name", "code", "type", "reason"])
       ->Option.getOr("UNKNOWN_ERROR")
-      ->screamingSnakeCase,
+      ->LoggerGrammar.screamingSnakeCase,
       message: object
       ->firstString(["message", "description", "statusMessage"])
       ->Option.map(truncate),
@@ -231,7 +171,7 @@ let summarizeExn = error =>
   | Exn.Error(jsError) =>
     switch jsError->Exn.name {
     | Some(name) => {
-        name: name->screamingSnakeCase,
+        name: name->LoggerGrammar.screamingSnakeCase,
         message: jsError->Exn.message->Option.map(truncate),
         details: [],
       }
@@ -257,7 +197,7 @@ let summarizeErrorResponse = result =>
         name: object
         ->firstString(["type", "code", "reason"])
         ->Option.getOr("ERROR_RESPONSE")
-        ->screamingSnakeCase,
+        ->LoggerGrammar.screamingSnakeCase,
         message: object->firstString(["message"])->Option.map(truncate),
         details: [
           ("error_code", object->firstString(["code"])),
@@ -330,7 +270,7 @@ let outcomeDetails = operationOutcome => {
     switch operationOutcome {
     | OpStarted | OpDone(_) | OpReturned(_) | OpTriggered(_) | OpReused(_) => []
     | OpFailed({class, error}) =>
-      [("failure_class", class->variantValue->JSON.Encode.string)]->Array.concat(
+      [("failure_class", class->LoggerGrammar.variantValue->JSON.Encode.string)]->Array.concat(
         error->Option.map(errorDetails)->Option.getOr([]),
       )
     | OpTimedOut({timeoutMs}) => timeoutMs > 0 ? [("timeout_ms", timeoutMs->JSON.Encode.int)] : []

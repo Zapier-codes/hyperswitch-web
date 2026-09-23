@@ -64,7 +64,7 @@ let name = value =>
   | BankTransfer(_) => "BANK_TRANSFER"
   | CardRedirect(_) => "CARD_REDIRECT"
   | MobilePayment(_) => "MOBILE_PAYMENT"
-  | Dynamic(value) => value->LoggerUtils.screamingSnakeCase
+  | Dynamic(value) => value->LoggerGrammar.screamingSnakeCase
   }
 
 let typeName = value =>
@@ -95,7 +95,7 @@ let typeName = value =>
   | BankTransfer(Dynamic(value))
   | CardRedirect(Dynamic(value))
   | MobilePayment(Dynamic(value)) =>
-    Some(value->LoggerUtils.screamingSnakeCase)
+    Some(value->LoggerGrammar.screamingSnakeCase)
   | Card(Unspecified)
   | Wallet(Unspecified)
   | PayLater(Unspecified)

@@ -1146,16 +1146,10 @@ let fetchApiWithLogging = async (
   ~signal: option<Fetch.AbortSignal.t>=?,
 ) => {
   try {
-    let (response, data) = await LoggerRuntime.observe(
-      ~category=Api,
-      ~spec=event->SdkLogger.apiSpec,
-      ~severity=event->SdkLogger.apiSeverity,
-      ~data=event
-      ->LoggerUtils.eventDetails
-      ->Array.concat([("url", uri->JSON.Encode.string)]),
+    let (response, data) = await SdkLogger.observeApiWithBody(
+      ~event,
+      ~url=uri,
       ~details=bodyStr->LoggerUtils.payloadDetails,
-      ~failureOf=LoggerUtils.httpBodyFailure,
-      ~detailsOf=LoggerUtils.httpBodyDetails,
       ~call=async () => {
         let body = switch method {
         | #GET => None

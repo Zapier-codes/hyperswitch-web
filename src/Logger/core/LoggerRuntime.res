@@ -12,7 +12,7 @@ let sourceName = source =>
   | HyperLoader => "HYPER_LOADER"
   | Headless => "HEADLESS"
   | Elements(mode) =>
-    `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerUtils.screamingSnakeCase}`
+    `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerGrammar.screamingSnakeCase}`
   }
 
 let currentSource = ref(HyperLoader->sourceName)
@@ -52,18 +52,6 @@ LoggerContext.onSessionChange :=
     }
   )
 
-let eventName = (~category, ~action, ~subject, ~outcome) => {
-  let step = switch (action, outcome) {
-  | (Some(action), Some(outcome)) => Some(`${action}_${outcome->outcomeName}`)
-  | (Some(action), None) => Some(action)
-  | (None, Some(outcome)) => Some(outcome->outcomeName)
-  | (None, None) => None
-  }
-  [Some(category->categorySegment), step, Some(subject)]
-  ->Array.filterMap(segment => segment)
-  ->Array.join(".")
-}
-
 let emit = (
   ~category,
   ~spec: eventSpec,
@@ -82,7 +70,7 @@ let emit = (
   if severity->isEnabled {
     LoggerUtils.safeRun(() => {
       let context = context->Option.getOr(LoggerContext.current())
-      let name = eventName(
+      let name = LoggerGrammar.eventName(
         ~category,
         ~action=spec.action,
         ~subject=spec.subject,
@@ -165,10 +153,13 @@ let emit = (
             ("merchant_id", context.merchantId),
             ("payment_id", context.paymentId),
             ("app_id", ""),
-            ("platform", Window.Navigator.platform->LoggerUtils.screamingSnakeCase),
+            ("platform", Window.Navigator.platform->LoggerGrammar.screamingSnakeCase),
             ("user_agent", Window.Navigator.userAgent),
             ("event_name", name),
-            ("browser_name", browser.name->Option.getOr("Others")->LoggerUtils.screamingSnakeCase),
+            (
+              "browser_name",
+              browser.name->Option.getOr("Others")->LoggerGrammar.screamingSnakeCase,
+            ),
             ("browser_version", browser.version->Option.getOr("0")),
             ("latency", durationMs->Option.map(value => value->Float.toString)->Option.getOr("")),
             ("first_event", (seen === 0)->LoggerUtils.stringOfBool),
@@ -217,7 +208,7 @@ let settle = tracker =>
 
 let emitOutcome = (
   ~category,
-  ~spec: operationSpec,
+  ~spec: eventSpec,
   ~severity: operationSeverity,
   ~data: details=[],
   ~details: details=[],
@@ -228,7 +219,7 @@ let emitOutcome = (
 ) =>
   emit(
     ~category,
-    ~spec=spec->toEventSpec(~outcome=operationOutcome->outcomeOf),
+    ~spec={...spec, outcome: Some(operationOutcome->outcomeOf)},
     ~severity=operationOutcome->LoggerUtils.outcomeSeverity(~severity),
     ~data=data->Array.concat(operationOutcome->LoggerUtils.outcomeDetails),
     ~details,
@@ -240,7 +231,7 @@ let emitOutcome = (
 
 let emitPhase = (
   ~category,
-  ~spec: operationSpec,
+  ~spec: eventSpec,
   ~severity: operationSeverity,
   ~outcome: outcome,
   ~data=[],
@@ -291,7 +282,7 @@ let rethrow = error =>
 
 let observe = (
   ~category,
-  ~spec: operationSpec,
+  ~spec: eventSpec,
   ~severity: operationSeverity,
   ~data: details=[],
   ~details: details=[],
@@ -412,7 +403,7 @@ let forwardInvocation: ('fn, (unit => 'value) => 'value) => 'fn = %raw(`
 
 let observeCallback = (
   ~category,
-  ~spec: operationSpec,
+  ~spec: eventSpec,
   ~severity: operationSeverity,
   ~data: details=[],
   ~details: details=[],
@@ -441,7 +432,7 @@ let observeCallback = (
   )
 
 let observeResource = (
-  ~spec: operationSpec,
+  ~spec: eventSpec,
   ~severity: operationSeverity,
   ~url,
   ~resource,

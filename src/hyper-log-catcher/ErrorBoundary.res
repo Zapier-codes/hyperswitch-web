@@ -135,7 +135,7 @@ module ErrorCard = {
       LoggerContext.setSessionData(~merchantId=publishableKey, ())
       let details = [
         ("component", componentName->JSON.Encode.string),
-        ("boundary_level", level->LoggerUtils.variantName->JSON.Encode.string),
+        ("boundary_level", level->LoggerGrammar.variantName->JSON.Encode.string),
         (
           "component_stack",
           error.componentStack
@@ -146,11 +146,7 @@ module ErrorCard = {
         ),
       ]
       let exn = error.error->Exn.anyToExnInternal
-      switch level {
-      | Top => SdkLogger.logCrash(~origin=ErrorBoundary, ~details, ~exn)
-      | RequestButton => SdkLogger.logDegraded(~surface=WalletButton, ~details, ~exn)
-      | PaymentMethod => SdkLogger.logDegraded(~surface=PaymentMethodPane, ~details, ~exn)
-      }
+      SdkLogger.logCrash(~origin=ErrorBoundary, ~details, ~exn)
       None
     })
 

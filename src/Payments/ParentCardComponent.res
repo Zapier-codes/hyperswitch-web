@@ -63,7 +63,7 @@ let make = (
     "hyper_" ++
     flowType
     ->CardThemeType.getPaymentModeToStrMapper
-    ->LoggerUtils.snakeCase
+    ->LoggerGrammar.snakeCase
   let paymentMethod = isBancontact ? "bank_redirect" : "card"
   let paymentMethodType = isBancontact ? "bancontact_card" : "debit"
 
