@@ -70,6 +70,7 @@ let make = (~paymentMethodType) => {
     let json = ev.data->safeParse
     let confirm = json->getDictFromJson->ConfirmType.itemToObjMapper
     if confirm.doSubmit {
+      let message = "Please add Bank Details and then confirm payment with the added payment methods."
       SdkLogger.logLifecycle(
         ~event=FormValidationFailed({
           reason: "Please add Bank Details and then confirm payment with the added payment methods.",
@@ -78,11 +79,9 @@ let make = (~paymentMethodType) => {
           ~method="bank_debit",
           ~methodType=paymentMethodType,
         ),
+        ~message,
       )
-      postFailedSubmitResponse(
-        ~errortype="validation_error",
-        ~message="Please add Bank Details and then confirm payment with the added payment methods.",
-      )
+      postFailedSubmitResponse(~errortype="validation_error", ~message)
     }
   }, [])
   useSubmitPaymentData(submitCallback)

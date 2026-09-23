@@ -499,7 +499,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
 
   let create = (fieldType: string, options: JSON.t): fieldHandle =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.CardForm(Create),
+      ~event=HyperLoaderLogger.Create({surface: CardForm}),
       ~details=[("field", fieldType->JSON.Encode.string)],
       ~call=() =>
         switch mapFieldTypeToInternalFieldName(fieldType) {
@@ -555,7 +555,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
       )
     } else {
       HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.CardForm(Update),
+        ~event=HyperLoaderLogger.Update({surface: CardForm}),
         ~details=[
           ("field_count", fieldsRef.contents->Dict.valuesToArray->Array.length->JSON.Encode.int),
         ],
@@ -574,13 +574,8 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
     }
   }
 
-  let on = (event: string, cb: JSON.t => unit): unit => {
+  let on = (event: string, cb: JSON.t => unit): unit =>
     eventCallbacksRef.contents->Dict.set(event, cb)
-    HyperLoaderLogger.logMerchantCall(
-      ~event=HyperLoaderLogger.CardForm(On),
-      ~details=[("event", event->JSON.Encode.string)],
-    )
-  }
 
   let dispatchConfirm = (~flow: string, ~paymentToken: option<string>): promise<JSON.t> =>
     Promise.make((resolve, _reject) => {
@@ -612,7 +607,7 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
 
   let confirmPayment = (): promise<JSON.t> =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.CardForm(ConfirmPayment),
+      ~event=HyperLoaderLogger.ConfirmPayment({surface: CardForm}),
       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
       ~failureOf=errorCodeFailureSummary,
       ~call=() =>
@@ -653,34 +648,37 @@ let makeCardForm = (~config: groupConfig): Types.cardForm => {
     )
 
   let deinit = (): unit =>
-    HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.CardForm(Deinit), ~call=() => {
-      SdkLogger.logState(~event=CardFormUnmounted({scope: PaymentForm}))
-      fieldsRef.contents
-      ->Dict.valuesToArray
-      ->Array.forEach(entry => {
-        try entry.handle.destroy() catch {
-        | _ => ()
-        }
-      })
-      fieldsRef := Dict.make()
-      fields := Dict.make()->JSON.Encode.object
-      settlePendingConfirm(
-        groupFailureResponse(
-          ~code="group_deinitialized",
-          ~errorType="server_error",
-          ~message="deinit() was called while a confirm was in flight — the payment may still have gone through",
-        ),
-      )
-      confirmingRef := false
-      coordinator.pendingCommandsRef := []
-      coordinatorConfirmPendingRef := None
-      closeInstalledPorts(coordinator)
-      deinitCallbacksRef.contents->Array.forEach(cb => cb())
-      deinitCallbacksRef := []
-      coordinator.pendingPortsRef := []
-      coordinator.mountRef := None
-      coordinator.readyRef := false
-    })
+    HyperLoaderLogger.observeMerchantCall(
+      ~event=HyperLoaderLogger.Deinit({surface: CardForm}),
+      ~call=() => {
+        SdkLogger.logState(~event=CardFormUnmounted({scope: PaymentForm}))
+        fieldsRef.contents
+        ->Dict.valuesToArray
+        ->Array.forEach(entry => {
+          try entry.handle.destroy() catch {
+          | _ => ()
+          }
+        })
+        fieldsRef := Dict.make()
+        fields := Dict.make()->JSON.Encode.object
+        settlePendingConfirm(
+          groupFailureResponse(
+            ~code="group_deinitialized",
+            ~errorType="server_error",
+            ~message="deinit() was called while a confirm was in flight — the payment may still have gone through",
+          ),
+        )
+        confirmingRef := false
+        coordinator.pendingCommandsRef := []
+        coordinatorConfirmPendingRef := None
+        closeInstalledPorts(coordinator)
+        deinitCallbacksRef.contents->Array.forEach(cb => cb())
+        deinitCallbacksRef := []
+        coordinator.pendingPortsRef := []
+        coordinator.mountRef := None
+        coordinator.readyRef := false
+      },
+    )
 
   let cardForm: Types.cardForm = {
     create,

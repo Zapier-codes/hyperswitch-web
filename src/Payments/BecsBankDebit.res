@@ -80,14 +80,16 @@ let make = () => {
         | None => ()
         }
       } else {
+        let message = "Please enter all fields"
         SdkLogger.logLifecycle(
           ~event=FormValidationFailed({reason: "Please enter all fields"}),
           ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
             ~method=paymentMethod,
             ~methodType=paymentMethodType,
           ),
+          ~message,
         )
-        postFailedSubmitResponse(~errortype="validation_error", ~message="Please enter all fields")
+        postFailedSubmitResponse(~errortype="validation_error", ~message)
       }
     }
   }, (email, fullName, modalData, isManualRetryEnabled, sdkAuthorization))

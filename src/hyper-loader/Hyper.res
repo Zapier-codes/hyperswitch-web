@@ -192,7 +192,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     HyperLoaderLogger.startSession(~sessionId=sessionID, ~merchantId=publishableKey, ~profileId)
 
     HyperLoaderLogger.logMerchantProps(
-      ~event=HyperProp(TestMode),
+      ~event=TestMode({surface: Hyper}),
       ~details=[("test_mode", isTestMode->JSON.Encode.bool)],
     )
 
@@ -206,7 +206,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         ->Option.getOr("")
       if customBackendUrl !== "" {
         HyperLoaderLogger.logMerchantProps(
-          ~event=HyperLoaderLogger.HyperProp(CustomBackendUrl),
+          ~event=HyperLoaderLogger.CustomBackendUrl({surface: Hyper}),
           ~details=[("url", customBackendUrl->JSON.Encode.string)],
         )
       }
@@ -217,7 +217,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     switch options->getOptionsDict->Dict.get("redirectionFlags") {
     | Some(_) =>
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.HyperProp(RedirectionFlags),
+        ~event=HyperLoaderLogger.RedirectionFlags({surface: Hyper}),
         ~details=[
           (
             "should_use_top_redirection",
@@ -243,7 +243,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
         if !isReinit {
           HyperLoaderLogger.logMerchantCall(
-            ~event=HyperLoaderLogger.Hyper(Init),
+            ~event=HyperLoaderLogger.Init({surface: Hyper}),
             ~details=[("timestamp", sdkTimestamp->JSON.Encode.string)],
           )
         }
@@ -257,7 +257,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     switch Window.getHyper->Nullable.toOption {
     | Some(hyperMethod) if !isForceInit =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.Hyper(Reinit),
+        ~event=HyperLoaderLogger.Reinit({surface: Hyper}),
         ~details=[("timestamp", sdkTimestamp->JSON.Encode.string)],
         ~call=() => hyperMethod,
       )
@@ -268,7 +268,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
       {
         () => {
           HyperLoaderLogger.logMerchantCall(
-            ~event=HyperLoaderLogger.Hyper(LoadHyper),
+            ~event=HyperLoaderLogger.LoadHyper({surface: Hyper}),
             ~details=[("timestamp", loaderTimestamp->JSON.Encode.string)],
           )
           if (
@@ -359,7 +359,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let retrievePaymentIntentFn = clientSecretOrSdkAuth =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(RetrievePaymentIntent),
+          ~event=HyperLoaderLogger.RetrievePaymentIntent({surface: Hyper}),
           ~call=() => retrievePaymentIntentApiCall(clientSecretOrSdkAuth),
         )
 
@@ -468,7 +468,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let confirmPayment = payload =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmPayment),
+          ~event=HyperLoaderLogger.ConfirmPayment({surface: Hyper}),
           ~details=[("iframe_ready", isReadyResolved.contents->JSON.Encode.bool)],
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() => gatedConfirmCall(payload),
@@ -476,7 +476,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let confirmTokenization = payload =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmTokenization),
+          ~event=HyperLoaderLogger.ConfirmTokenization({surface: Hyper}),
           ~details=[("iframe_ready", isReadyResolved.contents->JSON.Encode.bool)],
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() => gatedConfirmCall(payload),
@@ -484,14 +484,14 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let confirmOneClickPayment = (payload, result: bool) =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmOneClickPayment),
+          ~event=HyperLoaderLogger.ConfirmOneClickPayment({surface: Hyper}),
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() => confirmPaymentWrapper(payload, true, result),
         )
 
       let confirmPaymentViaSDKButton = payload =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmPayment),
+          ~event=HyperLoaderLogger.ConfirmPayment({surface: Hyper}),
           ~details=[("iframe_ready", isReadyResolved.contents->JSON.Encode.bool)]->Array.concat([
             ("source", "sdk_button"->JSON.Encode.string),
           ]),
@@ -561,13 +561,13 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let elements = elementsOptions =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(CreateElements),
+          ~event=HyperLoaderLogger.CreateElements({surface: Hyper}),
           ~call=() => makeElements(elementsOptions),
         )
 
       let widgets = elementsOptions =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(CreateWidgets),
+          ~event=HyperLoaderLogger.CreateWidgets({surface: Hyper}),
           ~call=() => makeElements(elementsOptions),
         )
 
@@ -587,7 +587,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         pmSessionId := pmSessionIdVal
 
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(PaymentMethodsManagementElements),
+          ~event=HyperLoaderLogger.PaymentMethodsManagementElements({surface: Hyper}),
           ~call=() =>
             PaymentMethodsManagementElements.make(
               pmManagementOptions,
@@ -647,7 +647,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         _options: option<JSON.t>,
       ) =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(ConfirmCardPayment),
+          ~event=HyperLoaderLogger.ConfirmCardPayment({surface: Hyper}),
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
           ~call=() => confirmCardPaymentCall(clientSecretId, data),
         )
@@ -721,7 +721,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let paymentRequest = options =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(PaymentRequest),
+          ~event=HyperLoaderLogger.PaymentRequest({surface: Hyper}),
           ~call=() => makePaymentRequest(options),
         )
 
@@ -740,7 +740,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         )
 
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(InitPaymentSession),
+          ~event=HyperLoaderLogger.InitPaymentSession({surface: Hyper}),
           ~call=() =>
             PaymentSession.make(
               paymentSessionOptions,
@@ -786,7 +786,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let completeUpdateIntent = clientSecret =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(CompleteUpdateIntent),
+          ~event=HyperLoaderLogger.CompleteUpdateIntent({surface: Hyper}),
           ~failureOf=result => {
             let resultDict = result->getDictFromJson
             resultDict->getBool("updateCompleted", false)
@@ -802,7 +802,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
       let initiateUpdateIntent = () =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(InitiateUpdateIntent),
+          ~event=HyperLoaderLogger.InitiateUpdateIntent({surface: Hyper}),
           ~call=() => {
             iframeRef.contents->Array.forEach(ifR => {
               ifR->Window.iframePostMessage(
@@ -826,7 +826,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         LoggerContext.setPaymentIdFromCredentials(~clientSecret=clientSecretId)
 
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Hyper(InitAuthenticationSession),
+          ~event=HyperLoaderLogger.InitAuthenticationSession({surface: Hyper}),
           ~call=() =>
             AuthenticationSession.make(
               authenticationSessionOptions,
@@ -856,7 +856,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
             ~sdkAuthorization=?Some(sdkAuthorizationValue)->getNonEmptyOption,
           )
           HyperLoaderLogger.observeMerchantCall(
-            ~event=HyperLoaderLogger.Hyper(InitPaymentMethodSession),
+            ~event=HyperLoaderLogger.InitPaymentMethodSession({surface: Hyper}),
             ~call=() => PaymentMethodSession.make(options),
           )
         },

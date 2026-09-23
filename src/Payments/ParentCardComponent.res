@@ -917,14 +917,16 @@ let make = (
                 ~confirmParams=confirm.confirmParams,
               )
             } else if dict->Dict.get("cardTokenFail")->Option.isSome {
+              let message = "Something went wrong"
               SdkLogger.logLifecycle(
                 ~event=VaultFlowFailed({reason: TokenizationFailed}),
                 ~paymentMethod=?LoggerTaxonomy.fromBackendPair(
                   ~method=paymentMethod,
                   ~methodType=paymentMethodType,
                 ),
+                ~message,
               )
-              postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
+              postFailedSubmitResponse(~errortype="server_error", ~message)
             }
             if isInnerCardMessage && dict->Dict.get("submitSuccessful")->Option.isSome {
               messageParentWindow(dict->Dict.toArray)

@@ -90,22 +90,26 @@ let make = (
                   ~targetOrigin=keys.parentURL,
                 )
               } else {
+                let message = "Something went wrong"
                 SdkLogger.logLifecycle(
                   ~event=VaultFlowFailed({reason: TokenizationFailed}),
                   ~failure=res,
                   ~paymentMethod=Card(Unspecified),
+                  ~message,
                 )
-                postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
+                postFailedSubmitResponse(~errortype="server_error", ~message)
               }
               resolve()
             })
             ->catch(err => {
+              let message = "Something went wrong"
               SdkLogger.logLifecycle(
                 ~event=VaultFlowFailed({reason: TokenizationFailed}),
                 ~exn=err,
                 ~paymentMethod=Card(Unspecified),
+                ~message,
               )
-              postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
+              postFailedSubmitResponse(~errortype="server_error", ~message)
               resolve()
             })
             ->ignore

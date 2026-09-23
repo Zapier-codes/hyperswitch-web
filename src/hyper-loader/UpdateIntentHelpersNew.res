@@ -61,30 +61,24 @@ let sendElementsUpdateToIframes = (iframes, ~newSdkAuthorization, ~newClientSecr
 
 // Error response when updateIntent is already in progress (used as early return guard).
 let updateIntentInProgressResponse = () => {
-  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
-  getFailedSubmitResponse(
-    ~message="An updateIntent operation is already in progress.",
-    ~errorType="update_intent_error",
-  )
+  let message = "An updateIntent operation is already in progress."
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}), ~message)
+  getFailedSubmitResponse(~message, ~errorType="update_intent_error")
 }
 
 // Error response when confirm is blocked because updateIntent is in progress.
 // Uses getFailedSubmitResponse (same format as Elements/Hyper).
 let confirmBlockedResponse = () => {
-  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
-  getFailedSubmitResponse(
-    ~message="Cannot confirm payment while updateIntent is in progress.",
-    ~errorType="update_intent_error",
-  )
+  let message = "Cannot confirm payment while updateIntent is in progress."
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}), ~message)
+  getFailedSubmitResponse(~message, ~errorType="update_intent_error")
 }
 
 // Same as confirmBlockedResponse but uses handleFailureResponse (used in PaymentSessionMethods).
 let confirmBlockedResponseForSession = () => {
-  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}))
-  handleFailureResponse(
-    ~message="Cannot confirm payment while updateIntent is in progress.",
-    ~errorType="update_intent_error",
-  )
+  let message = "Cannot confirm payment while updateIntent is in progress."
+  SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "update_intent_in_progress"}), ~message)
+  handleFailureResponse(~message, ~errorType="update_intent_error")
 }
 
 // --- Forward a data promise to iframes ---
@@ -286,10 +280,13 @@ let performUpdateIntent = async (
   ~isSdkParamsEnabled,
   ~selectorString,
   ~shouldWaitForReady,
-  ~merchantEvent: HyperLoaderLogger.merchantCallEvent=HyperLoaderLogger.PaymentSession(
-    UpdateIntent,
-  ),
+  ~surface: HyperLoaderLogger.surface=PaymentSession,
 ) => {
+  let callback = HyperLoaderLogger.observeMerchantCallback(
+    ~event=UpdateIntent({surface: surface}),
+    ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
+    ~callback,
+  )
   if isUpdateIntentInProgress.contents {
     updateIntentInProgressResponse()
   } else {
@@ -392,7 +389,7 @@ let performUpdateIntent = async (
       }
 
     let response = await HyperLoaderLogger.observeMerchantCall(
-      ~event=merchantEvent,
+      ~event=UpdateIntent({surface: surface}),
       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
       ~call=runUpdateIntent,
     )

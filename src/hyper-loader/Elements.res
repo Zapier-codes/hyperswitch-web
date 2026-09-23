@@ -65,7 +65,7 @@ let make = (
 
     if isSdkParamsEnabled {
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(PreloadSdkWithParams),
+        ~event=HyperLoaderLogger.PreloadSdkWithParams({surface: Elements}),
         ~details=[
           (
             "params",
@@ -80,7 +80,7 @@ let make = (
     | Some(appearanceValue) => {
         let appearanceDict = appearanceValue->getDictFromJson
         HyperLoaderLogger.logMerchantProps(
-          ~event=HyperLoaderLogger.ElementsProp(Appearance),
+          ~event=HyperLoaderLogger.Appearance({surface: Elements}),
           ~details=[
             ("theme", appearanceDict->getString("theme", "")->JSON.Encode.string),
             ("keys", appearanceDict->Dict.keysToArray->Array.length->JSON.Encode.int),
@@ -93,7 +93,7 @@ let make = (
     switch localOptions->Dict.get("fonts") {
     | Some(_) =>
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(Fonts),
+        ~event=HyperLoaderLogger.Fonts({surface: Elements}),
         ~details=[("count", decodedFonts->Array.length->JSON.Encode.int)],
       )
     | None => ()
@@ -101,14 +101,14 @@ let make = (
 
     if blockConfirm {
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(BlockConfirm),
+        ~event=HyperLoaderLogger.BlockConfirm({surface: Elements}),
         ~details=[("block_confirm", blockConfirm->JSON.Encode.bool)],
       )
     }
 
     if customPodUri !== "" {
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(CustomPodUri),
+        ~event=HyperLoaderLogger.CustomPodUri({surface: Elements}),
         ~details=[("provided", true->JSON.Encode.bool)],
       )
     }
@@ -121,7 +121,7 @@ let make = (
     switch localOptions->Dict.get("locale") {
     | Some(_) =>
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(Locale),
+        ~event=HyperLoaderLogger.Locale({surface: Elements}),
         ~details=[("locale", locale)],
       )
     | None => ()
@@ -130,7 +130,7 @@ let make = (
     switch localOptions->Dict.get("loader") {
     | Some(_) =>
       HyperLoaderLogger.logMerchantProps(
-        ~event=HyperLoaderLogger.ElementsProp(Loader),
+        ~event=HyperLoaderLogger.Loader({surface: Elements}),
         ~details=[("loader", loader)],
       )
     | None => ()
@@ -297,7 +297,7 @@ let make = (
     }
     let getElement = componentName =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=Elements(GetElement),
+        ~event=GetElement({surface: Elements}),
         ~detailsOf=result => [("found", result->Option.isSome->JSON.Encode.bool)],
         ~call=() => savedPaymentElement->Dict.get(componentName),
       )
@@ -331,13 +331,14 @@ let make = (
     }
 
     let update = newOptions =>
-      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
-        updateElementsOptions(newOptions)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.Update({surface: Elements}),
+        ~call=() => updateElementsOptions(newOptions),
       )
 
     let fetchUpdates = () => {
       HyperLoaderLogger.logMerchantCall(
-        ~event=Elements(FetchUpdates),
+        ~event=FetchUpdates({surface: Elements}),
         ~details=[("implemented", false->JSON.Encode.bool)],
       )
       Promise.make((resolve, _) => {
@@ -370,7 +371,7 @@ let make = (
           ~isSdkParamsEnabled,
           ~selectorString=localSelectorString,
           ~shouldWaitForReady=paymentElementIframeRef->Array.length > 0,
-          ~merchantEvent=HyperLoaderLogger.Elements(UpdateIntent),
+          ~surface=Elements,
         )
 
         let isSuccess = response->getDictFromJson->getString("status", "") === "succeeded"
@@ -524,13 +525,6 @@ let make = (
               | _ => false
               }
             ) {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(ApplePay),
-              )
               switch ApplePayTypes.sessionForApplePay->Nullable.toOption {
               | Some(session) =>
                 try {
@@ -563,14 +557,6 @@ let make = (
                   ~paymentMethod=Wallet(ApplePay),
                 )
               }
-            } else {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(ApplePay),
-              )
             }
           } else if dict->Dict.get("applePayCanMakePayments")->Option.isSome {
             let applePayCanMakePayments = getBool(dict, "applePayCanMakePayments", false)
@@ -1155,13 +1141,6 @@ let make = (
               | _ => false
               }
             ) {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(GooglePay),
-              )
               let dict = json->getDictFromJson
               let sessionObj = SessionsType.itemToObjMapper(dict, Others)
               let gPayToken = SessionsType.getPaymentSessionObj(sessionObj.sessionsToken, Gpay)
@@ -1275,7 +1254,11 @@ let make = (
                       ? "PRODUCTION"
                       : "TEST",
                     "paymentDataCallbacks": {
-                      "onPaymentDataChanged": onPaymentDataChanged,
+                      "onPaymentDataChanged": SdkLogger.observeFunctionCallback(
+                        ~event=OnPaymentDataChanged,
+                        ~paymentMethod=Wallet(GooglePay),
+                        ~callback=onPaymentDataChanged,
+                      ),
                     },
                   }->anyTypeToJson
                 } else {
@@ -1403,32 +1386,12 @@ let make = (
                   ~exn=err,
                 )
               }
-            } else if (
-              switch wallets.googlePay {
-              | GooglePayConfigString(Never) | GooglePayConfigObj({display: Never}) => true
-              | _ => false
-              }
-            ) {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(GooglePay),
-              )
             }
             if (
               componentType->getIsComponentTypeForPaymentElementCreate &&
               samsungPayPresent->Option.isSome &&
               wallets.samsungPay === Auto
             ) {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Auto->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(SamsungPay),
-              )
               let dict = json->getDictFromJson
               let sessionObj = SessionsType.itemToObjMapper(dict, SamsungPayObject)
               let samsungPayToken = SessionsType.getPaymentSessionObj(
@@ -1530,14 +1493,6 @@ let make = (
                 )
                 Console.error("Error loading Samsung Pay")
               }
-            } else if wallets.samsungPay === Never {
-              HyperLoaderLogger.logMerchantProps(
-                ~event=HyperLoaderLogger.ElementsProp(Wallets),
-                ~details=[
-                  ("display", PaymentType.Never->LoggerUtils.variantName->JSON.Encode.string),
-                ],
-                ~paymentMethod=Wallet(SamsungPay),
-              )
             }
 
             let sessionTokens = preloadSDKWithParams->getJsonFromDict("sessionTokens", json)
@@ -1576,8 +1531,9 @@ let make = (
     }
 
     let create = (componentTypeOrOptions: JSON.t, legacyOptions: Nullable.t<JSON.t>) =>
-      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
-        createElement(componentTypeOrOptions, legacyOptions)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.Create({surface: Elements}),
+        ~call=() => createElement(componentTypeOrOptions, legacyOptions),
       )
 
     module StdOption = {
@@ -1586,7 +1542,7 @@ let make = (
     let cardFormRef: ref<option<Types.cardForm>> = ref(StdOption.none)
     let createCardForm = (): Types.cardForm =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.Elements(CreateCardForm),
+        ~event=HyperLoaderLogger.CreateCardForm({surface: Elements}),
         ~call=() =>
           switch cardFormRef.contents {
           | Some(group) => group

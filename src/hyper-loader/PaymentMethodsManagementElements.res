@@ -131,8 +131,9 @@ let make = (
       setIframeRef(ref)
     }
     let getElement = componentName =>
-      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(GetElement), ~call=() =>
-        savedPaymentElement->Dict.get(componentName)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.GetElement({surface: Elements}),
+        ~call=() => savedPaymentElement->Dict.get(componentName),
       )
     let updateInternal = newOptions => {
       let newOptionsDict = newOptions->getDictFromJson
@@ -159,19 +160,19 @@ let make = (
       })
     }
     let update = newOptions =>
-      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Update), ~call=() =>
-        updateInternal(newOptions)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.Update({surface: Elements}),
+        ~call=() => updateInternal(newOptions),
       )
-    let fetchUpdates = () =>
-      {
-        HyperLoaderLogger.logMerchantCall(
-          ~event=HyperLoaderLogger.Elements(FetchUpdates),
-          ~details=[("implemented", false->JSON.Encode.bool)],
-        )
-        Promise.make((resolve, _) => {
-          setTimeout(() => resolve(Dict.make()->JSON.Encode.object), 1000)->ignore
-        })
-      }
+    let fetchUpdates = () => {
+      HyperLoaderLogger.logMerchantCall(
+        ~event=HyperLoaderLogger.FetchUpdates({surface: Elements}),
+        ~details=[("implemented", false->JSON.Encode.bool)],
+      )
+      Promise.make((resolve, _) => {
+        setTimeout(() => resolve(Dict.make()->JSON.Encode.object), 1000)->ignore
+      })
+    }
 
     let createInternal = (componentTypeOrOptions: JSON.t, legacyOptions: Nullable.t<JSON.t>) => {
       let (componentType, newOptions) = parseComponentTypeAndOptions(
@@ -267,18 +268,18 @@ let make = (
       paymentElement
     }
     let create = (componentTypeOrOptions: JSON.t, legacyOptions: Nullable.t<JSON.t>) =>
-      HyperLoaderLogger.observeMerchantCall(~event=HyperLoaderLogger.Elements(Create), ~call=() =>
-        createInternal(componentTypeOrOptions, legacyOptions)
+      HyperLoaderLogger.observeMerchantCall(
+        ~event=HyperLoaderLogger.Create({surface: Elements}),
+        ~call=() => createInternal(componentTypeOrOptions, legacyOptions),
       )
     {
       getElement,
       update,
       fetchUpdates,
       create,
-
       updateIntent: _ =>
         HyperLoaderLogger.observeMerchantCall(
-          ~event=HyperLoaderLogger.Elements(UpdateIntent),
+          ~event=HyperLoaderLogger.UpdateIntent({surface: Elements}),
           ~details=[("supported", false->JSON.Encode.bool)],
           ~call=() => Promise.resolve(JSON.Encode.null),
         ),

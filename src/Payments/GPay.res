@@ -174,11 +174,6 @@ let make = (
   let {country, state, pinCode} = PaymentUtils.useNonPiiAddressData()
 
   let onGooglePaymentButtonClicked = () => {
-    SdkLogger.logUser(
-      ~event=ExpressCheckoutClicked,
-      ~paymentMethod=Wallet(GooglePay),
-      ~details=isTestMode ? [("test_mode", true->JSON.Encode.bool)] : [],
-    )
     if isTestMode {
       Console.warn("Google Pay button clicked in test mode - interaction disabled")
     } else {
@@ -251,7 +246,11 @@ let make = (
 
   let buttonStyle = {
     let base = {
-      "onClick": onGooglePaymentButtonClicked,
+      "onClick": SdkLogger.observeFunctionCallback(
+        ~event=OnClick,
+        ~paymentMethod=Wallet(GooglePay),
+        ~callback=onGooglePaymentButtonClicked,
+      ),
       "buttonType": resolvedButtonType->getLabel,
       "buttonSizeMode": "fill",
       "buttonColor": resolvedButtonColor,

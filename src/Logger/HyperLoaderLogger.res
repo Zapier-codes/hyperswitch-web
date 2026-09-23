@@ -1,81 +1,67 @@
 open LoggerTypes
 
-type method =
-  | Init
-  | Reinit
-  | Deinit
-  | LoadHyper
-  | CreateElements
-  | CreateWidgets
-  | Create
-  | CreateCardForm
-  | GetElement
-  | Mount
-  | Unmount
-  | Destroy
-  | Update
-  | Clear
-  | Collapse
-  | Focus
-  | Blur
-  | ConfirmPayment
-  | ConfirmCardPayment
-  | ConfirmOneClickPayment
-  | ConfirmWithCustomerDefaultPaymentMethod
-  | ConfirmWithLastUsedPaymentMethod
-  | RetrievePaymentIntent
-  | PaymentRequest
-  | InitPaymentSession
-  | InitPaymentMethodSession
-  | InitAuthenticationSession
-  | PaymentMethodsManagementElements
-  | GetCustomerSavedPaymentMethods
-  | GetCustomerDefaultSavedPaymentMethodData
-  | GetCustomerLastUsedPaymentMethodData
-  | UpdateIntent
-  | InitiateUpdateIntent
-  | CompleteUpdateIntent
-  | FetchUpdates
-  | OnSdkHandleClick
-  | On
-  | Tokenize
-  | ConfirmTokenization
+type surface =
+  | Hyper
+  | Elements
+  | PaymentElement
+  | CardForm
+  | CardField
+  | PaymentSession
+  | PaymentMethodsSession
+
+type surfaceData = {surface: surface}
 
 type merchantCallEvent =
-  | Hyper(method)
-  | Elements(method)
-  | PaymentElement(method)
-  | CardForm(method)
-  | CardField(method)
-  | PaymentSession(method)
-  | PaymentMethodsSession(method)
-
-type merchantProp =
-  | Appearance
-  | Layout
-  | Fields
-  | Wallets
-  | Terms
-  | Business
-  | DefaultValues
-  | Branding
-  | Locale
-  | Loader
-  | Fonts
-  | CustomerPaymentMethods
-  | PaymentMethodsConfig
-  | PaymentElementOptions
-  | PreloadSdkWithParams
-  | TestMode
-  | BlockConfirm
-  | CustomPodUri
-  | CustomBackendUrl
-  | RedirectionFlags
+  | Init(surfaceData)
+  | Reinit(surfaceData)
+  | Deinit(surfaceData)
+  | LoadHyper(surfaceData)
+  | CreateElements(surfaceData)
+  | CreateWidgets(surfaceData)
+  | Create(surfaceData)
+  | CreateCardForm(surfaceData)
+  | GetElement(surfaceData)
+  | Mount(surfaceData)
+  | Unmount(surfaceData)
+  | Destroy(surfaceData)
+  | Update(surfaceData)
+  | ConfirmPayment(surfaceData)
+  | ConfirmCardPayment(surfaceData)
+  | ConfirmOneClickPayment(surfaceData)
+  | ConfirmWithCustomerDefaultPaymentMethod(surfaceData)
+  | ConfirmWithLastUsedPaymentMethod(surfaceData)
+  | RetrievePaymentIntent(surfaceData)
+  | PaymentRequest(surfaceData)
+  | InitPaymentSession(surfaceData)
+  | InitPaymentMethodSession(surfaceData)
+  | InitAuthenticationSession(surfaceData)
+  | PaymentMethodsManagementElements(surfaceData)
+  | GetCustomerSavedPaymentMethods(surfaceData)
+  | GetCustomerDefaultSavedPaymentMethodData(surfaceData)
+  | GetCustomerLastUsedPaymentMethodData(surfaceData)
+  | UpdateIntent(surfaceData)
+  | InitiateUpdateIntent(surfaceData)
+  | CompleteUpdateIntent(surfaceData)
+  | FetchUpdates(surfaceData)
+  | Tokenize(surfaceData)
+  | ConfirmTokenization(surfaceData)
 
 type merchantPropEvent =
-  | HyperProp(merchantProp)
-  | ElementsProp(merchantProp)
-  | PaymentElementProp(merchantProp)
+  | Appearance(surfaceData)
+  | Locale(surfaceData)
+  | Loader(surfaceData)
+  | Fonts(surfaceData)
+  | PaymentElementOptions(surfaceData)
+  | PreloadSdkWithParams(surfaceData)
+  | TestMode(surfaceData)
+  | BlockConfirm(surfaceData)
+  | CustomPodUri(surfaceData)
+  | CustomBackendUrl(surfaceData)
+  | RedirectionFlags(surfaceData)
+
+type merchantCallbackEvent =
+  | OnSdkHandleClick(surfaceData)
+  | UpdateIntent(surfaceData)
 
 type merchantIssue =
   | InvalidPublishableKey
@@ -92,52 +78,38 @@ type merchantIssue =
   | UnknownOptionKey
   | DeprecatedMethod
 
-let methodOf = event =>
-  switch event {
-  | Hyper(method)
-  | Elements(method)
-  | PaymentElement(method)
-  | CardForm(method)
-  | CardField(method)
-  | PaymentSession(method)
-  | PaymentMethodsSession(method) => method
-  }
-
-let merchantCallSpec = event =>
-  makeOperation(
-    call,
-    `${event->LoggerUtils.variantName}_${event->methodOf->LoggerUtils.variantName}`,
-  )
+let merchantCallSpec = event => makeOperation(call, event->LoggerUtils.variantName)
 
 let merchantCallSeverity = event =>
-  switch event->methodOf {
-  | ConfirmPayment
-  | ConfirmCardPayment
-  | ConfirmOneClickPayment
-  | ConfirmWithCustomerDefaultPaymentMethod
-  | ConfirmWithLastUsedPaymentMethod
-  | PaymentRequest
-  | Tokenize
-  | ConfirmTokenization => {success: Info, failure: Error}
+  switch event {
+  | ConfirmPayment(_)
+  | ConfirmCardPayment(_)
+  | ConfirmOneClickPayment(_)
+  | ConfirmWithCustomerDefaultPaymentMethod(_)
+  | ConfirmWithLastUsedPaymentMethod(_)
+  | PaymentRequest(_)
+  | Tokenize(_)
+  | ConfirmTokenization(_) => {success: Info, failure: Error}
   | _ => {success: Debug, failure: Error}
   }
 
+let merchantCallbackSpec = event => makeOperation(callback, event->LoggerUtils.variantName)
+
+let merchantCallbackSeverity = event =>
+  switch event {
+  | OnSdkHandleClick(_)
+  | UpdateIntent(_) => {success: Debug, failure: Warning}
+  }
+
 let merchantPropSpec = event => {
-  let (surface, merchantProp) = switch event {
-  | HyperProp(merchantProp) => ("hyper", merchantProp)
-  | ElementsProp(merchantProp) => ("elements", merchantProp)
-  | PaymentElementProp(merchantProp) => ("payment_element", merchantProp)
-  }
-  {
-    action: Some("prop"),
-    subject: `${surface}_${merchantProp->LoggerUtils.variantName}`,
-    outcome: None,
-  }
+  action: Some("prop"),
+  subject: event->LoggerUtils.variantName,
+  outcome: None,
 }
 
 let merchantPropSeverity = Debug
 
-let merchantIssueSeverity = issue =>
+let merchantIssueSeverity = (issue): severity =>
   switch issue {
   | InvalidPublishableKey
   | InsecureProtocol
@@ -162,6 +134,7 @@ let observeMerchantCall = (
   ~timeoutMs=?,
   ~failureOf=LoggerUtils.summarizeErrorResponse,
   ~detailsOf=?,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -173,36 +146,61 @@ let observeMerchantCall = (
     ~timeoutMs?,
     ~failureOf,
     ~detailsOf?,
+    ~message?,
     ~call,
   )
 
-let logMerchantCall = (~event: merchantCallEvent, ~details=[]) =>
+let observeMerchantCallback = (
+  ~event: merchantCallbackEvent,
+  ~details=[],
+  ~timeoutMs=?,
+  ~failureOf=LoggerUtils.summarizeErrorResponse,
+  ~detailsOf=?,
+  ~message=?,
+  ~callback,
+) =>
+  LoggerRuntime.observeCallback(
+    ~category=Merchant,
+    ~spec=event->merchantCallbackSpec,
+    ~severity=event->merchantCallbackSeverity,
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
+    ~timeoutMs?,
+    ~failureOf,
+    ~detailsOf?,
+    ~message?,
+    ~callback,
+  )
+
+let logMerchantCall = (~event: merchantCallEvent, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
-    ~spec=event->merchantCallSpec->toEventSpec,
+    ~spec=event->merchantCallSpec->toEventSpec(~outcome=Returned),
     ~severity=(event->merchantCallSeverity).success,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
+    ~message?,
   )
 
-let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~paymentMethod=?) =>
+let logMerchantProps = (~event: merchantPropEvent, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
     ~spec=event->merchantPropSpec,
     ~severity=merchantPropSeverity,
     ~data=event->LoggerUtils.eventDetails,
     ~details,
-    ~paymentMethod?,
+    ~message?,
     ~once=true,
   )
 
-let logMerchantIssue = (~issue: merchantIssue, ~details=[]) =>
+let logMerchantIssue = (~issue: merchantIssue, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Merchant,
     ~spec=issue->LoggerUtils.deriveFailure,
     ~severity=issue->merchantIssueSeverity,
     ~data=issue->LoggerUtils.eventDetails,
     ~details,
+    ~message?,
     ~once=true,
   )
 

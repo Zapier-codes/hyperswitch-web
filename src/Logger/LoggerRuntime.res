@@ -1,6 +1,6 @@
 open LoggerTypes
 
-let schemaVersion = 7
+let schemaVersion = 8
 
 type source =
   | HyperLoader
@@ -44,12 +44,13 @@ let emitCounts = ref(Dict.make())
 
 let onceKeys = ref(Dict.make())
 
-LoggerContext.onSessionChange := (
-  () => {
-    emitCounts := Dict.make()
-    onceKeys := Dict.make()
-  }
-)
+LoggerContext.onSessionChange :=
+  (
+    () => {
+      emitCounts := Dict.make()
+      onceKeys := Dict.make()
+    }
+  )
 
 let eventName = (~category, ~action, ~subject, ~outcome) => {
   let step = switch (action, outcome) {
@@ -75,6 +76,7 @@ let emit = (
   ~paymentMethod: option<LoggerTaxonomy.paymentMethod>=?,
   ~context: option<LoggerContext.t>=?,
   ~rateKey: option<string>=?,
+  ~message: option<string>=?,
   ~once=false,
 ) =>
   if severity->isEnabled {
@@ -138,8 +140,14 @@ let emit = (
             ("authentication_id", context.authenticationId->JSON.Encode.string),
             ("href", Window.hrefWithoutSearch->JSON.Encode.string),
             ("occurrence", (seen + 1)->JSON.Encode.int),
-            ("details", details->Dict.fromArray->JSON.Encode.object),
           ]
+          ->Array.concat(
+            switch message {
+            | Some(message) => [("message", message->LoggerUtils.truncate->JSON.Encode.string)]
+            | None => []
+            },
+          )
+          ->Array.concat([("details", details->Dict.fromArray->JSON.Encode.object)])
           ->Dict.fromArray
           ->JSON.Encode.object
           ->JSON.stringify
@@ -215,6 +223,7 @@ let emitOutcome = (
   ~details: details=[],
   ~paymentMethod=?,
   ~context=?,
+  ~message=?,
   operationOutcome,
 ) =>
   emit(
@@ -226,6 +235,7 @@ let emitOutcome = (
     ~durationMs=?operationOutcome->durationOf,
     ~paymentMethod?,
     ~context?,
+    ~message?,
   )
 
 let emitPhase = (
@@ -238,12 +248,14 @@ let emitPhase = (
   ~startedAt=?,
   ~exn=?,
   ~paymentMethod=?,
+  ~message=?,
 ) => {
   let durationMs = startedAt->Option.map(startedAt => Date.now() -. startedAt)->Option.getOr(0.)
   let operationOutcome = switch outcome {
   | Started => OpStarted
   | Done => OpDone({durationMs: durationMs})
   | Returned => OpReturned({durationMs: durationMs})
+  | Triggered => OpTriggered({durationMs: durationMs})
   | Reused => OpReused({durationMs: durationMs})
   | TimedOut => OpTimedOut({durationMs, timeoutMs: 0})
   | Failed =>
@@ -253,7 +265,15 @@ let emitPhase = (
       error: exn->Option.map(LoggerUtils.summarizeUnknown),
     })
   }
-  operationOutcome->emitOutcome(~category, ~spec, ~severity, ~data, ~details, ~paymentMethod?)
+  operationOutcome->emitOutcome(
+    ~category,
+    ~spec,
+    ~severity,
+    ~data,
+    ~details,
+    ~paymentMethod?,
+    ~message?,
+  )
 }
 
 let isThenable: 'value => bool = %raw(`
@@ -262,6 +282,12 @@ let isThenable: 'value => bool = %raw(`
 
 external asPromise: 'value => promise<'result> = "%identity"
 external asResult: 'value => 'result = "%identity"
+
+let rethrow = error =>
+  switch error {
+  | Exn.Error(jsError) => JsExn.throw(jsError)
+  | error => raise(error)
+  }
 
 let observe = (
   ~category,
@@ -273,10 +299,17 @@ let observe = (
   ~failureOf: option<'result => option<errorSummary>>=?,
   ~detailsOf: option<'result => details>=?,
   ~paymentMethod=?,
+  ~syncOutcome=Returned,
+  ~message=?,
   ~call: unit => 'value,
 ): 'value => {
   let context = LoggerContext.current()
   let base = LoggerUtils.mergeDetails(~data, ~details)
+  let syncStep = timing =>
+    switch syncOutcome {
+    | Triggered => OpTriggered(timing)
+    | _ => OpReturned(timing)
+    }
   let tracker = makeTracker()
   let timedOut = ref(false)
 
@@ -291,6 +324,7 @@ let observe = (
       ),
       ~paymentMethod?,
       ~context,
+      ~message?,
     )
 
   let failed = (~class, ~error) =>
@@ -340,7 +374,7 @@ let observe = (
       })
       ->ignore
     } else if tracker->settle {
-      value->asResult->finish(~outcome=timing => OpReturned(timing))
+      value->asResult->finish(~outcome=syncStep)
     }
     value
   } catch {
@@ -348,10 +382,63 @@ let observe = (
       if tracker->settle {
         failed(~class=Threw, ~error=error->LoggerUtils.summarizeExn)
       }
-      raise(error)
+      rethrow(error)
     }
   }
 }
+
+// Returns a function with the same type as `fn` that forwards every argument
+// (and `this`) through `run`. Arity-agnostic, so one wrapper serves handlers
+// of any argument count. Non-functions are returned untouched, and the
+// original `length` is preserved for SDKs that inspect handler arity.
+let forwardInvocation: ('fn, (unit => 'value) => 'value) => 'fn = %raw(`
+  function (fn, run) {
+    if (typeof fn !== "function") {
+      return fn;
+    }
+    var wrapped = function () {
+      var self = this;
+      var args = arguments;
+      return run(function () {
+        return fn.apply(self, args);
+      });
+    };
+    try {
+      Object.defineProperty(wrapped, "length", { value: fn.length });
+    } catch (_) {}
+    return wrapped;
+  }
+`)
+
+let observeCallback = (
+  ~category,
+  ~spec: operationSpec,
+  ~severity: operationSeverity,
+  ~data: details=[],
+  ~details: details=[],
+  ~timeoutMs=?,
+  ~failureOf=?,
+  ~detailsOf=?,
+  ~paymentMethod=?,
+  ~message=?,
+  ~callback: 'fn,
+): 'fn =>
+  callback->forwardInvocation(invoke =>
+    observe(
+      ~category,
+      ~spec,
+      ~severity,
+      ~data,
+      ~details,
+      ~timeoutMs?,
+      ~failureOf?,
+      ~detailsOf?,
+      ~paymentMethod?,
+      ~syncOutcome=Triggered,
+      ~message?,
+      ~call=invoke,
+    )
+  )
 
 let observeResource = (
   ~spec: operationSpec,
@@ -364,6 +451,7 @@ let observeResource = (
   ~timeoutMs=defaultTimeoutMs,
   ~paymentMethod=?,
   ~abandoned=() => false,
+  ~message=?,
   ~onLoad,
   ~onError,
 ) => {
@@ -386,6 +474,7 @@ let observeResource = (
       ~details,
       ~paymentMethod?,
       ~context,
+      ~message?,
     )
 
   let failed = (~class, ~error) =>
@@ -451,7 +540,7 @@ let observeResource = (
         start()
         failed(~class=Threw, ~error)
       }
-      raise(error)
+      rethrow(error)
     }
   }
 }

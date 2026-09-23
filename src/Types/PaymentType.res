@@ -1671,24 +1671,8 @@ let itemToObjMapper = dict => {
   unknownKeysWarning(allowedPaymentElementOptions, dict, "options")
 
   HyperLoaderLogger.logMerchantProps(
-    ~event=PaymentElementProp(PaymentElementOptions),
+    ~event=PaymentElementOptions({surface: PaymentElement}),
     ~details=[("options", dict->sanitizePaymentElementOptions->JSON.Encode.object)],
-  )
-
-  [
-    ("layout", HyperLoaderLogger.Layout),
-    ("fields", Fields),
-    ("terms", Terms),
-    ("business", Business),
-    ("defaultValues", DefaultValues),
-    ("branding", Branding),
-    ("customerPaymentMethods", CustomerPaymentMethods),
-    ("paymentMethodsConfig", PaymentMethodsConfig),
-  ]->Array.forEach(((key, prop)) =>
-    switch dict->Dict.get(key) {
-    | Some(_) => HyperLoaderLogger.logMerchantProps(~event=PaymentElementProp(prop))
-    | None => ()
-    }
   )
 
   {

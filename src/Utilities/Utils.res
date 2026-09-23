@@ -1610,7 +1610,16 @@ let makeOneClickHandlerPromise = sdkHandleIsThere => {
   })
 }
 
-let generateRandomString = LoggerUtils.randomId
+let generateRandomString = length => {
+  let characters = "abcdefghijklmnopqrstuvwxyz0123456789"
+  let charactersLength = characters->String.length
+  let result = ref("")
+  for _ in 1 to length {
+    let index = (Math.random() *. charactersLength->Int.toFloat)->Float.toInt
+    result := result.contents ++ characters->String.charAt(index)
+  }
+  result.contents
+}
 
 let getWalletPaymentMethod = (wallets, paymentType: CardThemeType.mode) => {
   switch paymentType {

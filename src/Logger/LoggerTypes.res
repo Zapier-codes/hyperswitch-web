@@ -26,6 +26,7 @@ type outcome =
   | Started
   | Done
   | Returned
+  | Triggered
   | Reused
   | Failed
   | TimedOut
@@ -33,6 +34,7 @@ type outcome =
 type action = string
 
 let call = "call"
+let callback = "callback"
 let load = "load"
 let request = "request"
 
@@ -76,6 +78,7 @@ type operationOutcome =
   | OpStarted
   | OpDone(timing)
   | OpReturned(timing)
+  | OpTriggered(timing)
   | OpReused(timing)
   | OpFailed(failure)
   | OpTimedOut(timeout)
@@ -85,6 +88,7 @@ let outcomeOf = operationOutcome =>
   | OpStarted => Started
   | OpDone(_) => Done
   | OpReturned(_) => Returned
+  | OpTriggered(_) => Triggered
   | OpReused(_) => Reused
   | OpFailed(_) => Failed
   | OpTimedOut(_) => TimedOut
@@ -93,7 +97,11 @@ let outcomeOf = operationOutcome =>
 let durationOf = operationOutcome =>
   switch operationOutcome {
   | OpStarted => None
-  | OpDone({durationMs}) | OpReturned({durationMs}) | OpReused({durationMs}) => Some(durationMs)
+  | OpDone({durationMs})
+  | OpReturned({durationMs})
+  | OpTriggered({durationMs})
+  | OpReused({durationMs}) =>
+    Some(durationMs)
   | OpFailed({durationMs}) => Some(durationMs)
   | OpTimedOut({durationMs}) => Some(durationMs)
   }
@@ -103,7 +111,7 @@ type operationSeverity = {success: severity, failure: severity}
 let operationSeverityOf = ({success, failure}, ~outcome: operationOutcome) =>
   switch outcome {
   | OpStarted | OpReused(_) => Debug
-  | OpDone(_) | OpReturned(_) => success
+  | OpDone(_) | OpReturned(_) | OpTriggered(_) => success
   | OpFailed(_) | OpTimedOut(_) => failure
   }
 
@@ -134,6 +142,7 @@ let outcomeName = outcome =>
   | Started => "init"
   | Done => "done"
   | Returned => "returned"
+  | Triggered => "triggered"
   | Reused => "reused"
   | Failed => "failed"
   | TimedOut => "timed_out"

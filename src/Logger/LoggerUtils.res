@@ -21,17 +21,6 @@ let truncate = value =>
 
 let sanitizeUrl = url => url->String.replaceRegExp(/[?#].*$/, "")
 
-let randomId = length => {
-  let characters = "abcdefghijklmnopqrstuvwxyz0123456789"
-  let charactersLength = characters->String.length
-  let result = ref("")
-  for _ in 1 to length {
-    let index = (Math.random() *. charactersLength->Int.toFloat)->Float.toInt
-    result := result.contents ++ characters->String.charAt(index)
-  }
-  result.contents
-}
-
 let safeRun = action =>
   try action() catch {
   | error => Console.error2("hyper logging internals failed:", error)
@@ -339,7 +328,7 @@ let outcomeDetails = operationOutcome => {
     ->Option.getOr([])
   duration->Array.concat(
     switch operationOutcome {
-    | OpStarted | OpDone(_) | OpReturned(_) | OpReused(_) => []
+    | OpStarted | OpDone(_) | OpReturned(_) | OpTriggered(_) | OpReused(_) => []
     | OpFailed({class, error}) =>
       [("failure_class", class->variantValue->JSON.Encode.string)]->Array.concat(
         error->Option.map(errorDetails)->Option.getOr([]),

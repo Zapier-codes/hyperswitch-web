@@ -622,14 +622,13 @@ let makeClickToPaySession = async (
                 JSON.Encode.null
               })
               ->catch(error => {
+                let message = "An unknown error occurred while initializing Click to Pay session."
                 ClickToPayLogger.logLifecycle(
                   ~event=ProviderUnavailable({provider: VisaUctp}),
                   ~exn=error,
+                  ~message,
                 )
-                let failedErrorResponse = getFailedSubmitResponse(
-                  ~errorType="ERROR",
-                  ~message="An unknown error occurred while initializing Click to Pay session.",
-                )
+                let failedErrorResponse = getFailedSubmitResponse(~errorType="ERROR", ~message)
                 resolve(failedErrorResponse)
 
                 Promise.resolve(JSON.Encode.null)
@@ -637,14 +636,13 @@ let makeClickToPaySession = async (
               ->ignore
             },
             () => {
+              let message = "Failed to load Click to Pay script."
               ClickToPayLogger.logLifecycle(
                 ~event=ProviderUnavailable({provider: VisaUctp}),
                 ~details=[("failure", "script_load_failed"->JSON.Encode.string)],
+                ~message,
               )
-              let failedErrorResponse = getFailedSubmitResponse(
-                ~errorType="ERROR",
-                ~message="Failed to load Click to Pay script.",
-              )
+              let failedErrorResponse = getFailedSubmitResponse(~errorType="ERROR", ~message)
 
               resolve(failedErrorResponse)
             },
@@ -652,11 +650,9 @@ let makeClickToPaySession = async (
         }
       }
     | None => {
-        ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaUctp}))
-        let failedErrorResponse = getFailedSubmitResponse(
-          ~errorType="ERROR",
-          ~message="An error occured while trying to fetch Click to Pay Details",
-        )
+        let message = "An error occured while trying to fetch Click to Pay Details"
+        ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: VisaUctp}), ~message)
+        let failedErrorResponse = getFailedSubmitResponse(~errorType="ERROR", ~message)
 
         resolve(failedErrorResponse)
       }

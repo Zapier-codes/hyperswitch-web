@@ -292,7 +292,6 @@ type userEvent =
   | CustomerVerificationSubmitted(verificationData)
   | BankDetailsConfirmed
   | ExpressCheckoutClicked
-  | ExpressCheckoutDismissed
   | VoucherDownloadRequested
   | QrCodeCopyRequested
   | ThreeDsPopupDismissed
@@ -314,7 +313,6 @@ let userSeverity = value =>
   | PaymentSubmitted(_)
   | CustomerVerificationSubmitted(_)
   | ExpressCheckoutClicked
-  | ExpressCheckoutDismissed
   | ThreeDsPopupDismissed
   | VoucherDownloadRequested
   | QrCodeCopyRequested
@@ -376,8 +374,6 @@ type functionEvent =
   | ExecuteGooglePayment
   | BraintreeClientCreate
   | BraintreeApplePayCreate
-  | BraintreePerformValidation
-  | BraintreeTokenize
   | KlarnaInit
   | KlarnaLoad
   | PaypalButtonsRender
@@ -395,13 +391,49 @@ let functionSeverity = value =>
   | ExecuteGooglePayment
   | BraintreeClientCreate
   | BraintreeApplePayCreate
-  | BraintreePerformValidation
-  | BraintreeTokenize
   | KlarnaInit
   | KlarnaLoad
   | PaypalButtonsRender
   | PlaidCreate
   | VaultFormCreate => {success: Debug, failure: Error}
+  }
+
+type functionCallbackEvent =
+  | OnValidateMerchant
+  | OnPaymentAuthorized
+  | OnShippingContactSelected
+  | OnCancel
+  | OnPaymentDataChanged
+  | CreateOrder
+  | CreateBillingAgreement
+  | OnApprove
+  | OnShippingAddressChange
+  | OnError
+  | OnClick
+  | OnLoad
+  | OnSuccess
+  | OnExit
+  | OnFormStateChange
+
+let functionCallbackSpec = value => makeOperation(callback, value->LoggerUtils.variantName)
+
+let functionCallbackSeverity = value =>
+  switch value {
+  | OnFormStateChange
+  | OnShippingContactSelected
+  | OnShippingAddressChange
+  | OnPaymentDataChanged
+  | OnClick
+  | OnCancel
+  | OnExit
+  | OnLoad => {success: Debug, failure: Warning}
+  | OnValidateMerchant
+  | OnPaymentAuthorized
+  | CreateOrder
+  | CreateBillingAgreement
+  | OnApprove
+  | OnSuccess
+  | OnError => {success: Debug, failure: Error}
   }
 
 type resourceEvent =
@@ -481,6 +513,7 @@ let logLifecycle = (
   ~failure=?,
   ~durationMs=?,
   ~paymentMethod=?,
+  ~message=?,
 ) => {
   switch event {
   | AppRendered => renderedAt := Some(Date.now())
@@ -501,6 +534,7 @@ let logLifecycle = (
     ~failure?,
     ~durationMs?,
     ~paymentMethod?,
+    ~message?,
   )
 }
 
@@ -511,6 +545,7 @@ let logState = (
   ~failure=?,
   ~durationMs=?,
   ~paymentMethod=?,
+  ~message=?,
 ) =>
   LoggerRuntime.emit(
     ~category=State,
@@ -522,6 +557,7 @@ let logState = (
     ~failure?,
     ~durationMs?,
     ~paymentMethod?,
+    ~message?,
   )
 
 let namedField = field => field->String.trim === "" ? "unnamed" : field
@@ -535,7 +571,7 @@ let identify = event =>
   | event => event
   }
 
-let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
+let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?, ~message=?) => {
   let event = event->identify
   switch (event, paymentMethod) {
   | (PaymentMethodSelected({method}), None) =>
@@ -557,25 +593,28 @@ let logUser = (~event: userEvent, ~details=[], ~paymentMethod=?) => {
     ~details,
     ~paymentMethod?,
     ~rateKey?,
+    ~message?,
   )
 }
 
-let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[]) =>
+let logCrash = (~origin: crashOrigin, ~exn=?, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Crash,
     ~spec=origin->LoggerUtils.deriveEvent,
     ~severity=Error,
     ~details,
     ~exn?,
+    ~message?,
   )
 
-let logDegraded = (~surface: degradedSurface, ~exn=?, ~details=[]) =>
+let logDegraded = (~surface: degradedSurface, ~exn=?, ~details=[], ~message=?) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
     ~spec=surface->LoggerUtils.deriveFailure,
     ~severity=surface->degradedSeverity,
     ~details,
     ~exn?,
+    ~message?,
   )
 
 let sdkOrigins = [GlobalVars.sdkUrl, GlobalVars.repoPublicPath]->Array.filterMap(value =>
@@ -665,6 +704,7 @@ let observeApi = (
   ~failureOf=LoggerUtils.httpFailure,
   ~detailsOf=LoggerUtils.httpDetails,
   ~paymentMethod=?,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -677,6 +717,7 @@ let observeApi = (
     ~failureOf,
     ~detailsOf,
     ~paymentMethod?,
+    ~message?,
     ~call,
   )
 
@@ -688,6 +729,7 @@ let observeStaticAsset = (
   ~failureOf=LoggerUtils.httpFailure,
   ~detailsOf=LoggerUtils.httpDetails,
   ~paymentMethod=?,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -705,10 +747,19 @@ let observeStaticAsset = (
     ~failureOf,
     ~detailsOf,
     ~paymentMethod?,
+    ~message?,
     ~call,
   )
 
-let logApi = (~event: apiEvent, ~outcome, ~details=[], ~startedAt=?, ~exn=?, ~paymentMethod=?) =>
+let logApi = (
+  ~event: apiEvent,
+  ~outcome,
+  ~details=[],
+  ~startedAt=?,
+  ~exn=?,
+  ~paymentMethod=?,
+  ~message=?,
+) =>
   LoggerRuntime.emitPhase(
     ~category=Api,
     ~spec=event->apiSpec,
@@ -719,6 +770,7 @@ let logApi = (~event: apiEvent, ~outcome, ~details=[], ~startedAt=?, ~exn=?, ~pa
     ~startedAt?,
     ~exn?,
     ~paymentMethod?,
+    ~message?,
   )
 
 let logFunction = (
@@ -728,6 +780,7 @@ let logFunction = (
   ~startedAt=?,
   ~exn=?,
   ~paymentMethod=?,
+  ~message=?,
 ) =>
   LoggerRuntime.emitPhase(
     ~category=Function,
@@ -739,6 +792,7 @@ let logFunction = (
     ~startedAt?,
     ~exn?,
     ~paymentMethod?,
+    ~message?,
   )
 
 let observeFunction = (
@@ -748,6 +802,7 @@ let observeFunction = (
   ~failureOf=?,
   ~detailsOf=?,
   ~paymentMethod=?,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -760,7 +815,32 @@ let observeFunction = (
     ~failureOf?,
     ~detailsOf?,
     ~paymentMethod?,
+    ~message?,
     ~call,
+  )
+
+let observeFunctionCallback = (
+  ~event: functionCallbackEvent,
+  ~details=[],
+  ~timeoutMs=?,
+  ~failureOf=?,
+  ~detailsOf=?,
+  ~paymentMethod=?,
+  ~message=?,
+  ~callback,
+) =>
+  LoggerRuntime.observeCallback(
+    ~category=Function,
+    ~spec=event->functionCallbackSpec,
+    ~severity=event->functionCallbackSeverity,
+    ~data=event->LoggerUtils.eventDetails,
+    ~details,
+    ~timeoutMs?,
+    ~failureOf?,
+    ~detailsOf?,
+    ~paymentMethod?,
+    ~message?,
+    ~callback,
   )
 
 let observeResource = (
@@ -771,6 +851,7 @@ let observeResource = (
   ~dedupe=true,
   ~paymentMethod=?,
   ~abandoned=() => false,
+  ~message=?,
   ~onLoad=() => (),
   ~onError=_ => (),
 ) =>
@@ -784,6 +865,7 @@ let observeResource = (
     ~dedupe,
     ~paymentMethod?,
     ~abandoned,
+    ~message?,
     ~onLoad,
     ~onError,
   )

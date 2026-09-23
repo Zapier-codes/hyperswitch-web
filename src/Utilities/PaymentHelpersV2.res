@@ -180,11 +180,9 @@ let intentCall = (
                 )
                 handleOpenUrl(intent.nextAction.redirectToUrl)
               } else {
+                let message = "Payment failed. Try again!"
                 if !isPaymentSession {
-                  postFailedSubmitResponse(
-                    ~errortype="confirm_payment_failed",
-                    ~message="Payment failed. Try again!",
-                  )
+                  postFailedSubmitResponse(~errortype="confirm_payment_failed", ~message)
                 }
                 let recovered = uri->String.includes("force_sync=true")
                 SdkLogger.logLifecycle(
@@ -193,13 +191,14 @@ let intentCall = (
                     recovered,
                   }),
                   ~paymentMethod=?loggedPaymentMethod,
+                  ~message,
                 )
                 if recovered {
                   handleOpenUrl(url.href)
                 } else {
                   let failedSubmitResponse = getFailedSubmitResponse(
                     ~errorType="confirm_payment_failed",
-                    ~message="Payment failed. Try again!",
+                    ~message,
                   )
                   resolve(failedSubmitResponse)
                 }
@@ -389,11 +388,9 @@ let useSaveCard = (paymentType: payment) => {
       | _ => ()
       }
     | None =>
-      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}))
-      postFailedSubmitResponse(
-        ~errortype="confirm_payment_failed",
-        ~message="Payment failed. Try again!",
-      )
+      let message = "Payment failed. Try again!"
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}), ~message)
+      postFailedSubmitResponse(~errortype="confirm_payment_failed", ~message)
     }
   }
 }
@@ -448,11 +445,9 @@ let useUpdateCard = (paymentType: payment) => {
       | _ => ()
       }
     | None =>
-      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}))
-      postFailedSubmitResponse(
-        ~errortype="confirm_payment_failed",
-        ~message="Payment failed. Try again!",
-      )
+      let message = "Payment failed. Try again!"
+      SdkLogger.logLifecycle(~event=ConfirmBlocked({reason: "missing_pm_session_id"}), ~message)
+      postFailedSubmitResponse(~errortype="confirm_payment_failed", ~message)
     }
   }
 }

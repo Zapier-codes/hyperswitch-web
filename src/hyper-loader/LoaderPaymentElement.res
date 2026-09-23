@@ -22,12 +22,7 @@ let walletOneClickEventHandler = (event: Types.event) => {
   if dict->Dict.get("oneClickConfirmTriggered")->Option.isSome {
     switch currentOneClickHandler.contents {
     | Some(eH) =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(OnSdkHandleClick),
-        ~details=[("direction", "sdk_to_merchant"->JSON.Encode.string)],
-        ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
-        ~call=() => eH(),
-      )
+      eH()
       ->then(_ => {
         let msg = [("walletClickEvent", true->JSON.Encode.bool)]->Dict.fromArray
         event.source->Window.sendPostMessage(msg)
@@ -82,11 +77,9 @@ let make = (
   ~groupId: option<string>=?,
 ) => {
   try {
-    let surface = (method): HyperLoaderLogger.merchantCallEvent =>
-      switch fieldName {
-      | Some(_) => CardField(method)
-      | None => PaymentElement(method)
-      }
+    let surfaceData: HyperLoaderLogger.surfaceData = {
+      surface: fieldName->Option.isSome ? CardField : PaymentElement,
+    }
     let surfaceDetails = switch fieldName {
     | Some(field) => [("field", field->JSON.Encode.string)]
     | None => [("component_type", componentType->JSON.Encode.string)]
@@ -114,12 +107,20 @@ let make = (
 
     ensureWalletOneClickListener()
 
-    let onSDKHandleClick = eventHandler => {
-      if eventHandler->Option.isSome {
-        currentOneClickHandler := eventHandler
+    let onSDKHandleClick = eventHandler =>
+      switch eventHandler {
+      | Some(handler) =>
+        currentOneClickHandler :=
+          Some(
+            HyperLoaderLogger.observeMerchantCallback(
+              ~event=OnSdkHandleClick({surface: PaymentElement}),
+              ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
+              ~callback=handler,
+            ),
+          )
         isPaymentButtonHandlerProvided := true
+      | None => ()
       }
-    }
 
     let registerEventHandler = (eventType, eventHandler) => {
       if componentType->Utils.canHaveMultipleInstances && localSelectorRef.contents === "" {
@@ -252,43 +253,24 @@ let make = (
         )
       }
     }
-    let collapse = () =>
-      HyperLoaderLogger.logMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(Collapse),
-        ~details=[("component_type", componentType->JSON.Encode.string)],
-      )
+    let collapse = () => ()
     let blur = () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(Blur),
-        ~details=[("component_type", componentType->JSON.Encode.string)],
-        ~call=() =>
-          iframeRef->Array.forEach(iframe => {
-            let message = [("doBlur", true->JSON.Encode.bool)]->Dict.fromArray
-            iframe->Window.iframePostMessage(message)
-          }),
-      )
+      iframeRef->Array.forEach(iframe => {
+        let message = [("doBlur", true->JSON.Encode.bool)]->Dict.fromArray
+        iframe->Window.iframePostMessage(message)
+      })
 
     let focus = () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(Focus),
-        ~details=[("component_type", componentType->JSON.Encode.string)],
-        ~call=() =>
-          iframeRef->Array.forEach(iframe => {
-            let message = [("doFocus", true->JSON.Encode.bool)]->Dict.fromArray
-            iframe->Window.iframePostMessage(message)
-          }),
-      )
+      iframeRef->Array.forEach(iframe => {
+        let message = [("doFocus", true->JSON.Encode.bool)]->Dict.fromArray
+        iframe->Window.iframePostMessage(message)
+      })
 
     let clear = () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(Clear),
-        ~details=[("component_type", componentType->JSON.Encode.string)],
-        ~call=() =>
-          iframeRef->Array.forEach(iframe => {
-            let message = [("doClearValues", true->JSON.Encode.bool)]->Dict.fromArray
-            iframe->Window.iframePostMessage(message)
-          }),
-      )
+      iframeRef->Array.forEach(iframe => {
+        let message = [("doClearValues", true->JSON.Encode.bool)]->Dict.fromArray
+        iframe->Window.iframePostMessage(message)
+      })
 
     let clearMountedContainer = () =>
       switch Window.querySelector(mountId.contents)->Nullable.toOption {
@@ -305,14 +287,14 @@ let make = (
 
     let unmount = () =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=surface(Unmount),
+        ~event=Unmount(surfaceData),
         ~details=surfaceDetails->Array.concat(containerPresentDetail()),
         ~call=clearMountedContainer,
       )
 
     let destroy = () =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=surface(Destroy),
+        ~event=Destroy(surfaceData),
         ~details=surfaceDetails->Array.concat(containerPresentDetail()),
         ~call=() => {
           clearMountedContainer()
@@ -352,7 +334,7 @@ let make = (
 
     let update = newOptions =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.PaymentElement(Update),
+        ~event=HyperLoaderLogger.Update({surface: PaymentElement}),
         ~details=[("component_type", componentType->JSON.Encode.string)],
         ~call=() => updateElementOptions(newOptions),
       )
@@ -608,18 +590,12 @@ let make = (
 
     let mount = selector =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=surface(Mount),
+        ~event=Mount(surfaceData),
         ~details=surfaceDetails,
         ~call=() => mountElement(selector),
       )
 
-    let on = (eventType, callback) => {
-      HyperLoaderLogger.logMerchantCall(
-        ~event=surface(On),
-        ~details=surfaceDetails->Array.concat([("event", eventType->JSON.Encode.string)]),
-      )
-      registerEventHandler(eventType, callback)
-    }
+    let on = (eventType, callback) => registerEventHandler(eventType, callback)
 
     {
       on,

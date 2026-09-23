@@ -296,35 +296,14 @@ let makeFieldElementAndHandle = (
     },
     update: newOptions =>
       HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.CardField(Update),
+        ~event=HyperLoaderLogger.Update({surface: CardField}),
         ~details=fieldDetails,
         ~call=() => update(newOptions),
       ),
-    focus: () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.CardField(Focus),
-        ~details=fieldDetails,
-        ~call=() => postToOwnIframe([("doFocus", true->JSON.Encode.bool)]),
-      ),
-    blur: () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.CardField(Blur),
-        ~details=fieldDetails,
-        ~call=() => postToOwnIframe([("doBlur", true->JSON.Encode.bool)]),
-      ),
-    clear: () =>
-      HyperLoaderLogger.observeMerchantCall(
-        ~event=HyperLoaderLogger.CardField(Clear),
-        ~details=fieldDetails,
-        ~call=() => postToOwnIframe([("doClearValues", true->JSON.Encode.bool)]),
-      ),
-    on: (event, cb) => {
-      eventHandlersRef.contents->Dict.set(event, cb)
-      HyperLoaderLogger.logMerchantCall(
-        ~event=HyperLoaderLogger.CardField(On),
-        ~details=[("event", event->JSON.Encode.string)]->Array.concat(fieldDetails),
-      )
-    },
+    focus: () => postToOwnIframe([("doFocus", true->JSON.Encode.bool)]),
+    blur: () => postToOwnIframe([("doBlur", true->JSON.Encode.bool)]),
+    clear: () => postToOwnIframe([("doClearValues", true->JSON.Encode.bool)]),
+    on: (event, cb) => eventHandlersRef.contents->Dict.set(event, cb),
   }
 }
 

@@ -94,7 +94,7 @@ let startApplePaySession = (
 
   applePaySessionRef := ssn->Js.Nullable.return
 
-  ssn.onvalidatemerchant = _event => {
+  let handleValidateMerchant = (_event: ApplePayTypes.event) =>
     makeOneClickHandlerPromise(sdkHandleIsThere)
     ->then(result => {
       let result = result->JSON.Decode.bool->Option.getOr(false)
@@ -124,10 +124,10 @@ let startApplePaySession = (
       )->resolvePromise
       resolve()
     })
-    ->ignore
-  }
 
-  ssn.onshippingcontactselected = shippingAddressChangeEvent => {
+  let handleShippingContactSelected = (
+    shippingAddressChangeEvent: ApplePayTypes.shippingAddressChangeEvent,
+  ) => {
     let currentTotal = paymentRequest->getDictFromJson->getDictFromDict("total")
     let label = currentTotal->getString("label", "apple")
     let currentAmount = currentTotal->getString("amount", "0.00")
@@ -207,7 +207,7 @@ let startApplePaySession = (
     }
   }
 
-  ssn.onpaymentauthorized = event => {
+  let handlePaymentAuthorized = (event: ApplePayTypes.event) => {
     ssn.completePayment({"status": ssn.\"STATUS_SUCCESS"}->Identity.anyTypeToJson)
     applePaySessionRef := Nullable.null
     SdkLogger.logLifecycle(~event=WalletTokenReceived, ~paymentMethod=Wallet(ApplePay))
@@ -215,20 +215,43 @@ let startApplePaySession = (
     let payment = event.payment
     payment->callBackFunc
   }
-  ssn.oncancel = _ => {
+
+  let handleCancel = () => {
     applePaySessionRef := Nullable.null
     let abortedBySdk = applePaySessionAbortedBySdk.contents
     applePaySessionAbortedBySdk := false
+    let message = "ApplePay Session Cancelled"
     if abortedBySdk {
-      SdkLogger.logLifecycle(~event=WalletFlowExited, ~paymentMethod=Wallet(ApplePay))
-    } else {
-      SdkLogger.logUser(~event=ExpressCheckoutDismissed, ~paymentMethod=Wallet(ApplePay))
+      SdkLogger.logLifecycle(~event=WalletFlowExited, ~paymentMethod=Wallet(ApplePay), ~message)
     }
-    handleFailureResponse(
-      ~message="ApplePay Session Cancelled",
-      ~errorType="apple_pay",
-    )->resolvePromise
+    handleFailureResponse(~message, ~errorType="apple_pay")->resolvePromise
   }
+
+  let validateMerchant = SdkLogger.observeFunctionCallback(
+    ~event=OnValidateMerchant,
+    ~paymentMethod=Wallet(ApplePay),
+    ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
+    ~callback=handleValidateMerchant,
+  )
+  ssn.onvalidatemerchant = event => validateMerchant(event)->ignore
+
+  ssn.onshippingcontactselected = SdkLogger.observeFunctionCallback(
+    ~event=OnShippingContactSelected,
+    ~paymentMethod=Wallet(ApplePay),
+    ~callback=handleShippingContactSelected,
+  )
+
+  ssn.onpaymentauthorized = SdkLogger.observeFunctionCallback(
+    ~event=OnPaymentAuthorized,
+    ~paymentMethod=Wallet(ApplePay),
+    ~callback=handlePaymentAuthorized,
+  )
+
+  ssn.oncancel = SdkLogger.observeFunctionCallback(
+    ~event=OnCancel,
+    ~paymentMethod=Wallet(ApplePay),
+    ~callback=handleCancel,
+  )
 
   ssn.begin()
 }
@@ -307,11 +330,13 @@ let useHandleApplePayResponse = (
           setApplePayClicked(_ => false)
           setShowApplePayLoader(_ => false)
           if isSavedMethodsFlow || !isWallet {
+            let message = "Something went wrong"
             SdkLogger.logLifecycle(
               ~event=WalletFlowFailed({reason: SheetFailed}),
               ~paymentMethod=Wallet(ApplePay),
+              ~message,
             )
-            postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
+            postFailedSubmitResponse(~errortype="server_error", ~message)
           }
         } else if dict->Dict.get("applePaySyncPayment")->Option.isSome {
           syncPayment()
@@ -446,7 +471,7 @@ let createApplePayTransactionInfo = jsonDict =>
 
 let thirdPartyApplePayConnectors = ["braintree"]
 
-let observeBraintreeCallback = (~event: SdkLogger.functionEvent, ~doneDetails=[], run) => {
+let observeBraintreeCall = (~event: SdkLogger.functionEvent, ~doneDetails=[], run) => {
   let startedAt = Date.now()
   SdkLogger.logFunction(~event, ~outcome=Started, ~paymentMethod=Wallet(ApplePay))
   run(
@@ -481,8 +506,16 @@ let handleApplePayBraintreePaymentSession = (
     let paymentRequest = transactionInfo->applePayInstance.createPaymentRequest
     let sessions = applePaySession(3, paymentRequest)
 
-    sessions.onvalidatemerchant = event =>
-      observeBraintreeCallback(~event=BraintreePerformValidation, (~done_, ~failed) =>
+    let braintreeDetails = [("connector", "braintree"->JSON.Encode.string)]
+
+    // Apple Pay invokes these synchronously, so each logs `callback_triggered`.
+    // The outcome of the Braintree call made inside is reported by
+    // `onSuccess` / `onError` as lifecycle events.
+    sessions.onvalidatemerchant = SdkLogger.observeFunctionCallback(
+      ~event=OnValidateMerchant,
+      ~details=braintreeDetails,
+      ~paymentMethod=Wallet(ApplePay),
+      ~callback=(event: ApplePayTypes.event) =>
         applePayInstance.performValidation(
           {
             validationURL: event.validationURL,
@@ -490,22 +523,21 @@ let handleApplePayBraintreePaymentSession = (
           },
           (err, merchantSession) => {
             switch err->Nullable.toOption {
-            | None => {
-                done_()
-                sessions.completeMerchantValidation(merchantSession)
-              }
+            | None => sessions.completeMerchantValidation(merchantSession)
             | Some(err) => {
-                failed(err)
                 onError(err)
                 sessions->abortApplePaySession
               }
             }
           },
-        )
-      )
+        ),
+    )
 
-    sessions.onpaymentauthorized = event =>
-      observeBraintreeCallback(~event=BraintreeTokenize, (~done_, ~failed) =>
+    sessions.onpaymentauthorized = SdkLogger.observeFunctionCallback(
+      ~event=OnPaymentAuthorized,
+      ~details=braintreeDetails,
+      ~paymentMethod=Wallet(ApplePay),
+      ~callback=(event: ApplePayTypes.event) =>
         applePayInstance.tokenize(
           {
             token: event.payment.token,
@@ -517,12 +549,10 @@ let handleApplePayBraintreePaymentSession = (
             | Some(ssn) =>
               switch err->Nullable.toOption {
               | None => {
-                  done_()
                   sessions.completePayment(ssn.\"STATUS_SUCCESS"->JSON.Encode.string)
                   onSuccess(payload.nonce)
                 }
-              | Some(err) => {
-                  failed(err)
+              | Some(_) => {
                   sessions.completePayment(ssn.\"STATUS_FAILURE"->JSON.Encode.string)
                   onError("ApplePay Tokenization Failed"->JSON.Encode.string)
                 }
@@ -531,10 +561,15 @@ let handleApplePayBraintreePaymentSession = (
               onError("ApplePay session is null in onpaymentauthorized."->JSON.Encode.string)
             }
           },
-        )
-      )
+        ),
+    )
 
-    sessions.oncancel = _ => onCancel()
+    sessions.oncancel = SdkLogger.observeFunctionCallback(
+      ~event=OnCancel,
+      ~details=braintreeDetails,
+      ~paymentMethod=Wallet(ApplePay),
+      ~callback=onCancel,
+    )
 
     sessions.begin()
   } catch {
@@ -561,13 +596,12 @@ let handleApplePayBraintreeClick = (
         ("param", "paymentloader"->JSON.Encode.string),
         ("iframeId", selectorString->JSON.Encode.string),
       ])
-      postFailedSubmitResponse(
-        ~errortype="validation_error",
-        ~message="ApplePay Braintree nonce is empty",
-      )
+      let message = "ApplePay Braintree nonce is empty"
+      postFailedSubmitResponse(~errortype="validation_error", ~message)
       SdkLogger.logLifecycle(
         ~event=WalletFlowFailed({reason: MissingNonce, connector: "braintree"}),
         ~paymentMethod=Wallet(ApplePay),
+        ~message,
       )
     } else {
       SdkLogger.logLifecycle(~event=WalletTokenReceived, ~paymentMethod=Wallet(ApplePay))
@@ -592,11 +626,22 @@ let handleApplePayBraintreeClick = (
   }
 
   let onError = err => {
-    SdkLogger.logLifecycle(
-      ~event=WalletFlowFailed({reason: PaymentDataFailed, connector: "braintree"}),
-      ~paymentMethod=Wallet(ApplePay),
-      ~exn=err->Exn.anyToExnInternal,
-    )
+    // Our own failure strings become the row's message; Braintree error
+    // objects are summarised through ~exn as before.
+    switch err->JSON.Decode.string {
+    | Some(message) =>
+      SdkLogger.logLifecycle(
+        ~event=WalletFlowFailed({reason: PaymentDataFailed, connector: "braintree"}),
+        ~paymentMethod=Wallet(ApplePay),
+        ~message,
+      )
+    | None =>
+      SdkLogger.logLifecycle(
+        ~event=WalletFlowFailed({reason: PaymentDataFailed, connector: "braintree"}),
+        ~paymentMethod=Wallet(ApplePay),
+        ~exn=err->Exn.anyToExnInternal,
+      )
+    }
     restoreButton()
   }
 
@@ -605,14 +650,12 @@ let handleApplePayBraintreeClick = (
     applePaySessionAbortedBySdk := false
     if abortedBySdk {
       SdkLogger.logLifecycle(~event=WalletFlowExited, ~paymentMethod=Wallet(ApplePay))
-    } else {
-      SdkLogger.logUser(~event=ExpressCheckoutDismissed, ~paymentMethod=Wallet(ApplePay))
     }
     restoreButton()
   }
 
   try {
-    observeBraintreeCallback(
+    observeBraintreeCall(
       ~event=BraintreeClientCreate,
       ~doneDetails=[("connector", "braintree"->JSON.Encode.string)],
       (~done_, ~failed) =>
@@ -625,7 +668,7 @@ let handleApplePayBraintreeClick = (
             | None =>
               try {
                 done_()
-                observeBraintreeCallback(
+                observeBraintreeCall(
                   ~event=BraintreeApplePayCreate,
                   (~done_, ~failed) =>
                     braintreeApplePayPaymentCreate(

@@ -145,7 +145,7 @@ let resourceKind = (value): ResourceLoader.resource =>
 
 let paymentMethod = LoggerTaxonomy.Card(Unspecified)
 
-let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?) =>
+let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?, ~message=?) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
     ~spec=event->LoggerUtils.deriveEvent,
@@ -154,6 +154,7 @@ let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?) =>
     ~details,
     ~exn?,
     ~paymentMethod,
+    ~message?,
   )
 
 let observeFunction = (
@@ -162,6 +163,7 @@ let observeFunction = (
   ~timeoutMs=?,
   ~detailsOf=?,
   ~paymentMethod=paymentMethod,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -174,6 +176,7 @@ let observeFunction = (
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
+    ~message?,
     ~call,
   )
 
@@ -183,18 +186,20 @@ let observeMerchantCall = (
   ~timeoutMs=?,
   ~detailsOf=?,
   ~paymentMethod=paymentMethod,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
     ~category=Merchant,
     ~spec=method->merchantCallSpec,
     ~severity=method->merchantCallSeverity,
-    ~data=method->LoggerUtils.eventDetails,
+    ~data=[("surface", "AUTHENTICATION_SESSION"->JSON.Encode.string)],
     ~details,
     ~timeoutMs?,
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
+    ~message?,
     ~call,
   )
 
@@ -204,6 +209,7 @@ let observeApi = (
   ~details=[],
   ~failureOf=LoggerUtils.httpFailure,
   ~detailsOf=LoggerUtils.httpDetails,
+  ~message=?,
   ~call,
 ) =>
   LoggerRuntime.observe(
@@ -215,6 +221,7 @@ let observeApi = (
     ~failureOf,
     ~detailsOf,
     ~paymentMethod,
+    ~message?,
     ~call,
   )
 
@@ -226,6 +233,7 @@ let observeResource = (
   ~dedupe=true,
   ~timeoutMs=?,
   ~abandoned=?,
+  ~message=?,
   ~onLoad=() => (),
   ~onError=_ => (),
 ) =>
@@ -240,6 +248,7 @@ let observeResource = (
     ~timeoutMs?,
     ~abandoned?,
     ~paymentMethod,
+    ~message?,
     ~onLoad,
     ~onError,
   )

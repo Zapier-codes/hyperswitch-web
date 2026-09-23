@@ -125,13 +125,15 @@ let useHandleGooglePayResponse = (
         )
       }
       if dict->Dict.get("gpayError")->Option.isSome {
+        let message = "Something went wrong"
         SdkLogger.logLifecycle(
           ~event=WalletFlowFailed({reason: SheetFailed}),
           ~paymentMethod=Wallet(GooglePay),
+          ~message,
         )
         messageParentWindow([("fullscreen", false->JSON.Encode.bool)])
         if isSavedMethodsFlow || !isWallet {
-          postFailedSubmitResponse(~errortype="server_error", ~message="Something went wrong")
+          postFailedSubmitResponse(~errortype="server_error", ~message)
         }
       }
     }

@@ -559,7 +559,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                 mount: selector => {
                   uniqueSelectorRef := Some(selector)
                   HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Mount),
+                    ~event=HyperLoaderLogger.Mount({surface: CardField}),
                     ~details=vgsFieldDetails,
                     ~failureOf=_ => None,
                     ~call=() =>
@@ -576,7 +576,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                 },
                 unmount: () =>
                   HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Unmount),
+                    ~event=HyperLoaderLogger.Unmount({surface: CardField}),
                     ~details=vgsFieldDetails,
                     ~call=() => {
                       broker.unmountField(~fieldId)
@@ -588,7 +588,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                   ),
                 destroy: () =>
                   HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Destroy),
+                    ~event=HyperLoaderLogger.Destroy({surface: CardField}),
                     ~details=vgsFieldDetails,
                     ~call=() => {
                       broker.unmountField(~fieldId)
@@ -600,90 +600,72 @@ let make = (options: JSON.t): initPaymentMethodSession => {
                   ),
                 update: newOptions =>
                   HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Update),
+                    ~event=HyperLoaderLogger.Update({surface: CardField}),
                     ~details=vgsFieldDetails,
                     ~call=() => broker.updateField(~fieldId, ~options=newOptions),
                   ),
                 focus: () =>
-                  HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Focus),
-                    ~details=vgsFieldDetails,
-                    ~call=() => {
-                      switch getFieldHandle() {
-                      | Some(vgsFieldHandle) =>
-                        try {
-                          vgsFieldHandle.focus->Option.forEach(invoke => invoke())
-                        } catch {
-                        | exn =>
-                          Console.error2(
-                            `[PaymentMethodSession] VGS focus(${fieldId}) threw`,
-                            exn->Identity.anyTypeToJson,
-                          )
-                        }
-                      | None =>
-                        Console.warn(
-                          `[PaymentMethodSession] VGS focus(${fieldId}) — field not yet mounted`,
-                        )
-                      }
-                    },
-                  ),
+                  switch getFieldHandle() {
+                  | Some(vgsFieldHandle) =>
+                    try {
+                      vgsFieldHandle.focus->Option.forEach(invoke => invoke())
+                    } catch {
+                    | exn =>
+                      Console.error2(
+                        `[PaymentMethodSession] VGS focus(${fieldId}) threw`,
+                        exn->Identity.anyTypeToJson,
+                      )
+                    }
+                  | None =>
+                    Console.warn(
+                      `[PaymentMethodSession] VGS focus(${fieldId}) — field not yet mounted`,
+                    )
+                  },
                 blur: () =>
-                  HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Blur),
-                    ~details=vgsFieldDetails,
-                    ~call=() => {
-                      switch getFieldHandle() {
-                      | Some(vgsFieldHandle) =>
-                        try {
-                          vgsFieldHandle.blur->Option.forEach(invoke => invoke())
-                        } catch {
-                        | exn =>
-                          Console.error2(
-                            `[PaymentMethodSession] VGS blur(${fieldId}) threw`,
-                            exn->Identity.anyTypeToJson,
-                          )
-                        }
-                      | None =>
-                        Console.warn(
-                          `[PaymentMethodSession] VGS blur(${fieldId}) — field not yet mounted`,
-                        )
-                      }
-                    },
-                  ),
+                  switch getFieldHandle() {
+                  | Some(vgsFieldHandle) =>
+                    try {
+                      vgsFieldHandle.blur->Option.forEach(invoke => invoke())
+                    } catch {
+                    | exn =>
+                      Console.error2(
+                        `[PaymentMethodSession] VGS blur(${fieldId}) threw`,
+                        exn->Identity.anyTypeToJson,
+                      )
+                    }
+                  | None =>
+                    Console.warn(
+                      `[PaymentMethodSession] VGS blur(${fieldId}) — field not yet mounted`,
+                    )
+                  },
                 clear: () =>
-                  HyperLoaderLogger.observeMerchantCall(
-                    ~event=HyperLoaderLogger.CardField(Clear),
-                    ~details=vgsFieldDetails,
-                    ~call=() => {
-                      switch getFieldHandle() {
-                      | Some(vgsFieldHandle) =>
-                        try {
-                          let cleared = switch vgsFieldHandle.clear {
-                          | Some(invoke) => {
-                              invoke()
-                              true
-                            }
-                          | None => false
-                          }
-                          if !cleared {
-                            Console.warn(
-                              `[PaymentMethodSession] VGS clear(${fieldId}) — field has no clear() method; use update({placeholder: ..., validations: ...}) instead`,
-                            )
-                          }
-                        } catch {
-                        | exn =>
-                          Console.error2(
-                            `[PaymentMethodSession] VGS clear(${fieldId}) threw`,
-                            exn->Identity.anyTypeToJson,
-                          )
+                  switch getFieldHandle() {
+                  | Some(vgsFieldHandle) =>
+                    try {
+                      let cleared = switch vgsFieldHandle.clear {
+                      | Some(invoke) => {
+                          invoke()
+                          true
                         }
-                      | None =>
+                      | None => false
+                      }
+                      if !cleared {
                         Console.warn(
-                          `[PaymentMethodSession] VGS clear(${fieldId}) — field not yet mounted`,
+                          `[PaymentMethodSession] VGS clear(${fieldId}) — field has no clear() method; use update({placeholder: ..., validations: ...}) instead`,
                         )
                       }
-                    },
-                  ),
+                    } catch {
+                    | exn =>
+                      Console.error2(
+                        `[PaymentMethodSession] VGS clear(${fieldId}) threw`,
+                        exn->Identity.anyTypeToJson,
+                      )
+                    }
+                  | None =>
+                    Console.warn(
+                      `[PaymentMethodSession] VGS clear(${fieldId}) — field not yet mounted`,
+                    )
+                  },
                 on: (event, cb) => {
                   let key = `${fieldId}::${event}`
                   eventCallbacksRef.contents->Dict.set(key, cb)
@@ -727,7 +709,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
 
   let create = (fieldType: string, options: JSON.t): fieldHandle =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.CardForm(Create),
+      ~event=HyperLoaderLogger.Create({surface: CardForm}),
       ~details=[
         ("field", fieldType->JSON.Encode.string),
         ("vault", detectVaultType()->JSON.Encode.string),
@@ -745,13 +727,8 @@ let make = (options: JSON.t): initPaymentMethodSession => {
     )
   }
 
-  let on = (event: string, cb: JSON.t => unit): unit => {
+  let on = (event: string, cb: JSON.t => unit): unit =>
     eventCallbacksRef.contents->Dict.set(event, cb)
-    HyperLoaderLogger.logMerchantCall(
-      ~event=HyperLoaderLogger.PaymentMethodsSession(On),
-      ~details=[("event", event->JSON.Encode.string)],
-    )
-  }
 
   let tokenizeVgsFlowA = (): promise<JSON.t> => {
     switch getOrCreateVgsBroker() {
@@ -973,7 +950,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
 
   let tokenize = (): promise<JSON.t> =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.PaymentMethodsSession(Tokenize),
+      ~event=HyperLoaderLogger.Tokenize({surface: PaymentMethodsSession}),
       ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
       ~details=[("vault", detectVaultType()->JSON.Encode.string)],
       ~failureOf=errorCodeFailureSummary,
@@ -1039,7 +1016,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
 
   let deinit = (): unit =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.PaymentMethodsSession(Deinit),
+      ~event=HyperLoaderLogger.Deinit({surface: PaymentMethodsSession}),
       ~call=() => {
         SdkLogger.logState(~event=CardFormUnmounted({scope: VaultForm}))
         if sessionStateRef.contents != Deinitialized {
@@ -1118,7 +1095,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
 
   let createCardForm = (): vaultCardForm =>
     HyperLoaderLogger.observeMerchantCall(
-      ~event=HyperLoaderLogger.PaymentMethodsSession(CreateCardForm),
+      ~event=HyperLoaderLogger.CreateCardForm({surface: PaymentMethodsSession}),
       ~details=[("vault", detectVaultType()->JSON.Encode.string)],
       ~call=(): vaultCardForm => {
         create,

@@ -472,11 +472,15 @@ let make = (
         let createFormPromise =
           loadVGSScript()
           ->Promise.then(_ => {
-            let onFormStateChange: JSON.t => unit = state => {
-              formStateRef := state->getDictFromJson
-              publishFieldStates()
-              clearDependentFieldsOnEmptiedCardNumber()
-            }
+            let onFormStateChange: JSON.t => unit = SdkLogger.observeFunctionCallback(
+              ~event=OnFormStateChange,
+              ~paymentMethod=Card(Unspecified),
+              ~callback=state => {
+                formStateRef := state->getDictFromJson
+                publishFieldStates()
+                clearDependentFieldsOnEmptiedCardNumber()
+              },
+            )
             let startedAt = Date.now()
             SdkLogger.logFunction(
               ~event=VaultFormCreate,
@@ -604,35 +608,45 @@ let make = (
             )
           }
 
-          let onSuccess: (JSON.t, JSON.t) => unit = (status, data) => {
-            switch (status->httpStatusCode, data->JSON.Decode.object) {
-            | (Some(code), Some(vaultResponse)) if code >= 200. && code < 300. =>
-              logOutcomeOnce(
-                ~outcome=Done,
-                ~details=[("status_code", code->Float.toInt->JSON.Encode.int)],
-              )
-              let resultDict = Dict.make()
-              resultDict->Dict.set("status", "success"->JSON.Encode.string)
-              resultDict->Dict.set("vaultResponse", vaultResponse->JSON.Encode.object)
-              resolve(resultDict->JSON.Encode.object)
-            | _ =>
-              settleWithFailure(
-                `VGS returned no tokenization response (status ${status->describeJson}): ${data->describeJson}`,
-              )
-            }
-          }
-
-          let onError: JSON.t => unit = errors => {
-            let stringified = try errors->stringifyNullable->Nullable.toOption catch {
-            | _ => None
-            }
-            settleWithFailure(
-              switch errors->describeVGSSubmitErrors {
-              | Some(readable) => readable
-              | None => stringified->getNonEmptyOption->Option.getOr("VGS submit failed")
+          let onSuccess: (
+            JSON.t,
+            JSON.t,
+          ) => unit = SdkLogger.observeFunctionCallback(
+            ~event=OnSuccess,
+            ~paymentMethod=Card(Unspecified),
+            ~callback=(status, data) =>
+              switch (status->httpStatusCode, data->JSON.Decode.object) {
+              | (Some(code), Some(vaultResponse)) if code >= 200. && code < 300. =>
+                logOutcomeOnce(
+                  ~outcome=Done,
+                  ~details=[("status_code", code->Float.toInt->JSON.Encode.int)],
+                )
+                let resultDict = Dict.make()
+                resultDict->Dict.set("status", "success"->JSON.Encode.string)
+                resultDict->Dict.set("vaultResponse", vaultResponse->JSON.Encode.object)
+                resolve(resultDict->JSON.Encode.object)
+              | _ =>
+                settleWithFailure(
+                  `VGS returned no tokenization response (status ${status->describeJson}): ${data->describeJson}`,
+                )
               },
-            )
-          }
+          )
+
+          let onError: JSON.t => unit = SdkLogger.observeFunctionCallback(
+            ~event=OnError,
+            ~paymentMethod=Card(Unspecified),
+            ~callback=errors => {
+              let stringified = try errors->stringifyNullable->Nullable.toOption catch {
+              | _ => None
+              }
+              settleWithFailure(
+                switch errors->describeVGSSubmitErrors {
+                | Some(readable) => readable
+                | None => stringified->getNonEmptyOption->Option.getOr("VGS submit failed")
+                },
+              )
+            },
+          )
           let emptyPayload = JSON.Encode.object(Dict.make())
           try {
             let submitReturn =

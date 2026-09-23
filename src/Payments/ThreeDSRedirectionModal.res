@@ -49,12 +49,14 @@ let make = () => {
         }
       } catch {
       | err => {
+          let message = "Something went wrong."
           SdkLogger.logLifecycle(
             ~event=ThreeDsPopupFailed({reason: MessageHandlingFailed}),
             ~exn=err,
             ~paymentMethod=Card(Unspecified),
+            ~message,
           )
-          postFailedSubmitResponse(~errortype="error", ~message="Something went wrong.")
+          postFailedSubmitResponse(~errortype="error", ~message)
         }
       }
     }
