@@ -143,3 +143,9 @@ let resourceKind = (value): ResourceLoader.resource =>
   | UiKitStylesheet => Stylesheet
   | VisaSdkScript | MastercardSdkScript | UiKitScript => Script
   }
+
+let resourceAttributes = value =>
+  switch value {
+  | UiKitScript => [("type", "module")]
+  | VisaSdkScript | MastercardSdkScript | UiKitStylesheet => []
+  }

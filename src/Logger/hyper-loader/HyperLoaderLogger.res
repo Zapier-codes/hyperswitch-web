@@ -7,6 +7,7 @@ let observeMerchantCall = (
   ~timeoutMs=?,
   ~failureOf=LoggerUtils.summarizeErrorResponse,
   ~detailsOf=?,
+  ~source=?,
   ~message=?,
   ~call,
 ) =>
@@ -19,6 +20,7 @@ let observeMerchantCall = (
     ~timeoutMs?,
     ~failureOf,
     ~detailsOf?,
+    ~source?,
     ~message?,
     ~call,
   )

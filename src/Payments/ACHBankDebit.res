@@ -1,6 +1,5 @@
 open JotaiAtoms
 open Utils
-open PaymentModeType
 
 @react.component
 let make = () => {
@@ -102,7 +101,7 @@ let make = () => {
       } else {
         let message = "Please enter all fields"
         SdkLogger.logLifecycle(
-          ~event=FormValidationFailed({reason: "Please enter all fields"}),
+          ~event=FormValidationFailed({reason: message}),
           ~paymentMethod=?LoggerPaymentMethod.fromBackendPair(
             ~method=paymentMethod,
             ~methodType=paymentMethodType,

@@ -10,6 +10,7 @@ let logLifecycle = (
   ~failure=?,
   ~durationMs=?,
   ~paymentMethod=?,
+  ~source=?,
   ~message=?,
 ) => {
   switch event {
@@ -31,6 +32,7 @@ let logLifecycle = (
     ~failure?,
     ~durationMs?,
     ~paymentMethod?,
+    ~source?,
     ~message?,
   )
 }
@@ -108,22 +110,32 @@ let sdkOrigins = [GlobalVars.sdkUrl, GlobalVars.repoPublicPath]->Array.filterMap
   }
 )
 
+let firstStackUrl = stack =>
+  stack
+  ->String.match(/(?:https?|blob|file):\/\/[^\s)]+/)
+  ->Option.flatMap(matches => matches->Array.get(0)->Option.flatMap(match => match))
+  ->Option.getOr("")
+
 let isSdkFrame = source =>
   switch source->String.trim {
   | "" => false
-  | source => sdkOrigins->Array.some(origin => source->String.includes(origin))
+  | source => sdkOrigins->Array.some(origin => source->String.startsWith(origin))
   }
+
+@val @scope("window") external parentWindow: Dom.element = "parent"
 
 let adoptSessionFromParent = (~source) => {
   LoggerRuntime.configure(~source)
-  Window.addEventListener("message", (ev: Window.event) => {
-    let message = try JSON.parseExn(ev.data) catch {
-    | _ => JSON.Encode.null
+  Window.addEventListener("message", (ev: Window.event) =>
+    if ev.source === parentWindow {
+      let message = try JSON.parseExn(ev.data) catch {
+      | _ => JSON.Encode.null
+      }
+      message
+      ->JSON.Decode.object
+      ->Option.forEach(LoggerContext.startSessionFromMessage)
     }
-    message
-    ->JSON.Decode.object
-    ->Option.forEach(LoggerContext.startSessionFromMessage)
-  })
+  )
 }
 
 let catchGlobalCrashes = (~ownsDocument) => {
@@ -157,7 +169,7 @@ let catchGlobalCrashes = (~ownsDocument) => {
         ~origin,
         ~details=[
           ("error_message", message->JSON.Encode.string),
-          ("error_source", source->JSON.Encode.string),
+          ("error_source", source->LoggerUtils.sanitizeUrl->JSON.Encode.string),
         ],
       )
     }
@@ -175,7 +187,7 @@ let catchGlobalCrashes = (~ownsDocument) => {
     reportIfOurs(
       ~origin=UnhandledRejection,
       ~message=reason->describe,
-      ~source=reason->text("stack"),
+      ~source=reason->text("stack")->firstStackUrl,
     )
   })
 }
@@ -274,6 +286,7 @@ let observeFunction = (
   ~details=[],
   ~timeoutMs=?,
   ~paymentMethod=?,
+  ~source=?,
   ~message=?,
   ~call,
 ) =>
@@ -285,6 +298,7 @@ let observeFunction = (
     ~details,
     ~timeoutMs?,
     ~paymentMethod?,
+    ~source?,
     ~message?,
     ~call,
   )

@@ -46,7 +46,7 @@ let fetchCountryStateFromS3 = async endpoint => {
   )
   switch (await response->Fetch.Response.json)->decodeJsonTocountryStateData {
   | Some(data) => data
-  | None => Exn.raiseError("Failed to decode country state data")
+  | None => JsError.throwWithMessage("Failed to decode country state data")
   }
 }
 

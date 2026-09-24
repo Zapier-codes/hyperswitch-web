@@ -92,7 +92,7 @@ let startApplePaySession = (
   | None => ()
   }
 
-  applePaySessionRef := ssn->Js.Nullable.return
+  applePaySessionRef := ssn->Nullable.make
 
   let handleValidateMerchant = (_event: ApplePayTypes.event) =>
     makeOneClickHandlerPromise(sdkHandleIsThere)
@@ -639,7 +639,7 @@ let handleApplePayBraintreeClick = (
       SdkLogger.logLifecycle(
         ~event=WalletFlowFailed({reason: PaymentDataFailed, connector: "braintree"}),
         ~paymentMethod=Wallet(ApplePay),
-        ~exn=err->Exn.anyToExnInternal,
+        ~exn=err->JsExn.anyToExnInternal,
       )
     }
     restoreButton()

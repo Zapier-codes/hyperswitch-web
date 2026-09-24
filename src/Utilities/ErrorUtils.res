@@ -44,6 +44,7 @@ let describe = (issue: HyperLoaderLogger.merchantIssue) =>
       Recoverable,
       Static("loadStripe is deprecated. Please use loadHyper instead."),
     )
+  | UnknownOptionKey => (Recoverable, Dynamic(value => `Unknown Key: '${value}'`))
   }
 
 let manageErrorWarning = (issue: HyperLoaderLogger.merchantIssue, ~dynamicStr as param="") => {
@@ -62,7 +63,7 @@ let manageErrorWarning = (issue: HyperLoaderLogger.merchantIssue, ~dynamicStr as
   | Recoverable => Console.warn(text)
   | Fatal => {
       Console.error(text)
-      Exn.raiseError(text)
+      JsError.throwWithMessage(text)
     }
   }
 }

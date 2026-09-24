@@ -267,7 +267,7 @@ let loadPaypalSDK = (
         SdkLogger.logLifecycle(
           ~event=WalletFlowFailed({reason: PaymentDataFailed}),
           ~paymentMethod=Wallet(PaypalSdk),
-          ~exn=err->Exn.anyToExnInternal,
+          ~exn=err->JsExn.anyToExnInternal,
         )
         handleCloseLoader()
       },
@@ -413,7 +413,7 @@ let loadBraintreePaypalSdk = (
                           connector: "braintree",
                         }),
                         ~paymentMethod=Wallet(PaypalSdk),
-                        ~exn=err->Exn.anyToExnInternal,
+                        ~exn=err->JsExn.anyToExnInternal,
                       )
                       handleCloseLoader()
                     },

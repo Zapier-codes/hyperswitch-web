@@ -1786,7 +1786,7 @@ let convertClickToPayCardToCustomerMethod = (
     paymentMethodType: Some("click_to_pay"),
     defaultPaymentMethodSet: false,
     requiresCvv: false,
-    lastUsedAt: Js.Date.make()->Js.Date.toISOString,
+    lastUsedAt: Date.make()->Date.toISOString,
     bank: {
       mask: "",
     },

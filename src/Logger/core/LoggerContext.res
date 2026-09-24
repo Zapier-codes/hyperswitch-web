@@ -58,7 +58,10 @@ let setSessionData = (~sessionId=?, ~merchantId=?, ~paymentId=?, ()) => {
 }
 
 let paymentIdOfClientSecret = clientSecret =>
-  clientSecret->String.split("_secret_")->Array.get(0)->Option.getOr("")
+  switch clientSecret->String.split("_secret_") {
+  | parts if parts->Array.length >= 2 => parts->Array.get(0)->Option.getOr("")
+  | _ => ""
+  }
 
 let paymentIdOfSdkAuthorization = sdkAuthorization =>
   try {
@@ -90,9 +93,9 @@ let setPaymentIdFromCredentials = (~clientSecret="", ~sdkAuthorization=?) => {
 }
 
 let setPaymentIdFromClientSecret = clientSecret =>
-  switch clientSecret->String.trim {
+  switch clientSecret->paymentIdOfClientSecret->String.trim {
   | "" => ()
-  | clientSecret => setSessionData(~paymentId=clientSecret->paymentIdOfClientSecret, ())
+  | paymentId => setSessionData(~paymentId, ())
   }
 
 let stringField = (source, key) =>

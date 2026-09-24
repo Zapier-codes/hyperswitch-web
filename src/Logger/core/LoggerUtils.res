@@ -80,6 +80,18 @@ let utf8Length = value => {
 
 let sanitizeUrl = url => url->String.replaceRegExp(/[?#].*$/, "")
 
+let isUrlKey = key =>
+  ["url", "href", "uri"]->Array.some(suffix =>
+    key === suffix || key->String.endsWith("_" ++ suffix)
+  )
+
+let isFreeTextKey = key => key === "message" || key->String.endsWith("_message")
+
+let redact = text =>
+  text
+  ->String.replaceRegExp(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
+  ->String.replaceRegExp(/\d(?:[ -]?\d){5,}/g, "[digits]")
+
 let safeRun = action =>
   try action() catch {
   | error => Console.error2("hyper logging internals failed:", error)
@@ -113,7 +125,8 @@ let rec normalizeJson = json =>
   }
 and normalizeValue = (key, value) =>
   switch (key, value->JSON.Decode.string) {
-  | ("url" | "href" | "return_url", Some(text)) => text->sanitizeUrl->truncate->JSON.Encode.string
+  | (key, Some(text)) if key->isUrlKey => text->sanitizeUrl->truncate->JSON.Encode.string
+  | (key, Some(text)) if key->isFreeTextKey => text->redact->truncate->JSON.Encode.string
   | (_, Some(text)) if text->isVariantConstructor => text->screamingSnakeCase->JSON.Encode.string
   | _ => value->normalizeJson
   }
@@ -236,11 +249,11 @@ let summarizeValue = value => {
 
 let summarizeExn = error =>
   switch error {
-  | Exn.Error(jsError) =>
-    switch jsError->Exn.name {
+  | JsExn(jsError) =>
+    switch jsError->JsExn.name {
     | Some(name) => {
         name: name->screamingSnakeCase,
-        message: jsError->Exn.message->Option.map(truncate),
+        message: jsError->JsExn.message->Option.map(truncate),
         details: [],
       }
     | None => jsError->summarizeValue
@@ -248,7 +261,7 @@ let summarizeExn = error =>
   | _ => error->summarizeValue
   }
 
-let summarizeUnknown = value => value->Exn.anyToExnInternal->summarizeExn
+let summarizeUnknown = value => value->JsExn.anyToExnInternal->summarizeExn
 
 let summarizeErrorResponse = result =>
   result

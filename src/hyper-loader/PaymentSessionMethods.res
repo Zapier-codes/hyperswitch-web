@@ -45,6 +45,7 @@ let fetchCustomerSavedPaymentMethods = (
     } catch {
     | err =>
       SdkLogger.logLifecycle(
+        ~source=Headless,
         ~event=WalletFlowFailed({reason: ClientCreationFailed}),
         ~paymentMethod=Wallet(GooglePay),
         ~exn=err,
@@ -100,6 +101,7 @@ let fetchCustomerSavedPaymentMethods = (
 
     let getCustomerDefaultSavedPaymentMethodData = () =>
       HyperLoaderLogger.observeMerchantCall(
+        ~source=Headless,
         ~event=HyperLoaderLogger.GetCustomerDefaultSavedPaymentMethodData({
           surface: PaymentSession,
         }),
@@ -119,6 +121,7 @@ let fetchCustomerSavedPaymentMethods = (
 
     let getCustomerLastUsedPaymentMethodData = () =>
       HyperLoaderLogger.observeMerchantCall(
+        ~source=Headless,
         ~event=HyperLoaderLogger.GetCustomerLastUsedPaymentMethodData({surface: PaymentSession}),
         ~details=[
           (
@@ -157,6 +160,7 @@ let fetchCustomerSavedPaymentMethods = (
             | Some(data) =>
               if redirect == "always" {
                 SdkLogger.logLifecycle(
+                  ~source=Headless,
                   ~event=CustomerRedirectStarted({
                     nextAction: "cvc_confirm_redirect",
                     redirectOrigin: "payment_session",
@@ -317,6 +321,7 @@ let fetchCustomerSavedPaymentMethods = (
 
     let confirmWithCustomerDefaultPaymentMethod = payload =>
       HyperLoaderLogger.observeMerchantCall(
+        ~source=Headless,
         ~event=HyperLoaderLogger.ConfirmWithCustomerDefaultPaymentMethod({surface: PaymentSession}),
         ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
         ~call=() => confirmWithDefaultPaymentMethod(payload),
@@ -389,6 +394,7 @@ let fetchCustomerSavedPaymentMethods = (
         let paymentDataRequest = googlePayTokenRef.contents
 
         SdkLogger.observeFunction(
+          ~source=Headless,
           ~event=LoadPaymentData,
           ~paymentMethod=Wallet(GooglePay),
           ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
@@ -397,7 +403,11 @@ let fetchCustomerSavedPaymentMethods = (
         ->then(json => {
           let metadata = json->Identity.anyTypeToJson
 
-          SdkLogger.logLifecycle(~event=WalletTokenReceived, ~paymentMethod=Wallet(GooglePay))
+          SdkLogger.logLifecycle(
+            ~source=Headless,
+            ~event=WalletTokenReceived,
+            ~paymentMethod=Wallet(GooglePay),
+          )
 
           let completeGooglePayPayment = () => {
             let body = GooglePayHelpers.getGooglePayBodyFromResponse(
@@ -433,6 +443,7 @@ let fetchCustomerSavedPaymentMethods = (
       | None =>
         let message = "Google Pay is not available"
         SdkLogger.logLifecycle(
+          ~source=Headless,
           ~event=WalletFlowFailed({reason: ClientUnavailable}),
           ~paymentMethod=Wallet(GooglePay),
           ~message,
@@ -493,6 +504,7 @@ let fetchCustomerSavedPaymentMethods = (
 
     let confirmWithLastUsedPaymentMethod = payload =>
       HyperLoaderLogger.observeMerchantCall(
+        ~source=Headless,
         ~event=HyperLoaderLogger.ConfirmWithLastUsedPaymentMethod({surface: PaymentSession}),
         ~timeoutMs=LoggerRuntime.userGatedTimeoutMs,
         ~call=() => confirmWithLastUsedMethod(payload),
@@ -572,6 +584,7 @@ let fetchCustomerSavedPaymentMethods = (
         | Some(client) =>
           try {
             SdkLogger.observeFunction(
+              ~source=Headless,
               ~event=IsReadyToPay,
               ~paymentMethod=Wallet(GooglePay),
               ~call=() => client.isReadyToPay(payRequest),
@@ -611,6 +624,7 @@ let fetchCustomerSavedPaymentMethods = (
         ->catch(
           err => {
             SdkLogger.logLifecycle(
+              ~source=Headless,
               ~event=WalletFlowFailed({reason: PaymentDataFailed}),
               ~paymentMethod=Wallet(GooglePay),
               ~exn=err,
@@ -665,6 +679,7 @@ let getCustomerSavedPaymentMethods = (
   ~isUpdateIntentInProgress: ref<bool>,
 ) =>
   HyperLoaderLogger.observeMerchantCall(
+    ~source=Headless,
     ~event=HyperLoaderLogger.GetCustomerSavedPaymentMethods({surface: PaymentSession}),
     ~call=() =>
       fetchCustomerSavedPaymentMethods(

@@ -70,7 +70,10 @@ let handleHyperApplePayMounted = (event: Types.event) => {
     let isSavedMethodsFlow = dict->getBool("isSavedMethodsFlow", false)
 
     LoggerContext.setSessionData(~sessionId=sdkSessionId, ~merchantId=publishableKey, ())
-    LoggerContext.setPaymentIdFromClientSecret(clientSecret)
+    LoggerContext.setPaymentIdFromCredentials(
+      ~clientSecret,
+      ~sdkAuthorization=?Some(sdkAuthorization)->getNonEmptyOption,
+    )
     SdkLogger.logLifecycle(
       ~event=WalletStageReached({stage: ConfirmRequestReceived}),
       ~paymentMethod=Wallet(ApplePay),
@@ -242,7 +245,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
     let isSecure = Window.isSecureContext
     if !isSecure {
       manageErrorWarning(InsecureProtocol, ~dynamicStr=Window.hrefWithoutSearch)
-      Exn.raiseError("Insecure domain: " ++ Window.hrefWithoutSearch)
+      JsError.throwWithMessage("Insecure domain: " ++ Window.hrefWithoutSearch)
     }
     switch Window.getHyper->Nullable.toOption {
     | Some(hyperMethod) if !isForceInit =>
@@ -316,7 +319,10 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         | _ => (Some(clientSecretOrSdkAuth), None)
         }
 
-        actualClientSecret->Option.forEach(LoggerContext.setPaymentIdFromClientSecret)
+        LoggerContext.setPaymentIdFromCredentials(
+          ~clientSecret=actualClientSecret->Option.getOr(""),
+          ~sdkAuthorization=?sdkAuthorizationValue->getNonEmptyOption,
+        )
 
         let uri = APIUtils.generateApiUrlV1(
           ~apiCallType=RetrievePaymentIntent,
@@ -704,7 +710,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
               ~issue=UnsupportedOptionValue,
               ~details=[("method", "paymentRequest"->JSON.Encode.string)],
             )
-            Exn.raiseError("PaymentRequest is not supported in this browser")
+            JsError.throwWithMessage("PaymentRequest is not supported in this browser")
           }
         }
       }
@@ -722,14 +728,13 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
 
         clientSecret := paymentSessionOptionsDict->Utils.getStringFromDict("clientSecret", "")
 
-        // Payment sessions are headless flows (no elements UI is mounted).
-        LoggerRuntime.configure(~source=Headless)
         LoggerContext.setPaymentIdFromCredentials(
           ~clientSecret=clientSecret.contents,
           ~sdkAuthorization=?Some(sdkAuthorization.contents)->getNonEmptyOption,
         )
 
         HyperLoaderLogger.observeMerchantCall(
+          ~source=Headless,
           ~event=HyperLoaderLogger.InitPaymentSession({surface: Hyper}),
           ~call=() =>
             PaymentSession.make(
@@ -765,8 +770,8 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           })
           [("updateCompleted", true->JSON.Encode.bool)]->getJsonFromArrayOfJson
         } catch {
-        | Exn.Error(e) =>
-          let errorMsg = Exn.message(e)->Option.getOr("Something went wrong!")
+        | JsExn(e) =>
+          let errorMsg = JsExn.message(e)->Option.getOr("Something went wrong!")
           [
             ("updateCompleted", false->JSON.Encode.bool),
             ("errorMessage", errorMsg->JSON.Encode.string),
@@ -813,9 +818,17 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
           ->Option.getOr("")
         clientSecret := clientSecretId
 
-        LoggerContext.setPaymentIdFromCredentials(~clientSecret=clientSecretId)
+        LoggerContext.setPaymentIdFromCredentials(
+          ~clientSecret=clientSecretId,
+          ~sdkAuthorization=?authenticationSessionOptions
+          ->JSON.Decode.object
+          ->Option.flatMap(options => options->Dict.get("sdkAuthorization"))
+          ->Option.flatMap(JSON.Decode.string)
+          ->getNonEmptyOption,
+        )
 
         HyperLoaderLogger.observeMerchantCall(
+          ~source=AuthenticationSession,
           ~event=HyperLoaderLogger.InitAuthenticationSession({surface: Hyper}),
           ~call=() =>
             AuthenticationSession.make(

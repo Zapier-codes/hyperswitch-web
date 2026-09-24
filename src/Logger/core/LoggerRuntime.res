@@ -6,6 +6,7 @@ type source =
   | HyperLoader
   | PreMountLoader
   | Headless
+  | AuthenticationSession
   | Elements(CardThemeType.mode)
   | Fullscreen(string)
 
@@ -14,6 +15,7 @@ let sourceName = source =>
   | HyperLoader => "HYPER_LOADER"
   | PreMountLoader => "PRE_MOUNT_LOADER"
   | Headless => "HEADLESS"
+  | AuthenticationSession => "AUTHENTICATION_SESSION"
   | Elements(mode) =>
     `ELEMENTS_${mode->CardThemeType.getPaymentModeToStrMapper->LoggerUtils.screamingSnakeCase}`
   | Fullscreen(overlay) => `FULLSCREEN_${overlay->LoggerUtils.screamingSnakeCase}`
@@ -22,6 +24,8 @@ let sourceName = source =>
 let currentSource = ref(HyperLoader->sourceName)
 
 let configure = (~source) => currentSource := source->sourceName
+
+let isMerchantWindow = () => currentSource.contents === HyperLoader->sourceName
 
 let browser = UAParser.make().browser
 
@@ -67,6 +71,7 @@ let emit = (
   ~durationMs: option<float>=?,
   ~paymentMethod: option<LoggerPaymentMethod.paymentMethod>=?,
   ~context: option<LoggerContext.t>=?,
+  ~source: option<source>=?,
   ~rateKey: option<string>=?,
   ~message: option<string>=?,
   ~once=false,
@@ -137,7 +142,9 @@ let emit = (
           ]
           ->Array.concat(
             switch message {
-            | Some(message) => [("message", message->LoggerUtils.truncate->JSON.Encode.string)]
+            | Some(message) => [
+                ("message", message->LoggerUtils.redact->LoggerUtils.truncate->JSON.Encode.string),
+              ]
             | None => []
             },
           )
@@ -152,7 +159,7 @@ let emit = (
             ("log_type", severity->severityName),
             ("component", "WEB"),
             ("category", category->categoryName),
-            ("source", currentSource.contents),
+            ("source", source->Option.mapOr(currentSource.contents, sourceName)),
             ("version", GlobalVars.repoVersion),
             ("value", value),
             ("session_id", context.sessionId),
@@ -220,6 +227,7 @@ let emitOutcome = (
   ~details: details=[],
   ~paymentMethod=?,
   ~context=?,
+  ~source=?,
   ~message=?,
   operationOutcome,
 ) =>
@@ -232,6 +240,7 @@ let emitOutcome = (
     ~durationMs=?operationOutcome->durationOf,
     ~paymentMethod?,
     ~context?,
+    ~source?,
     ~message?,
   )
 
@@ -282,8 +291,8 @@ external asResult: 'value => 'result = "%identity"
 
 let rethrow = error =>
   switch error {
-  | Exn.Error(jsError) => JsExn.throw(jsError)
-  | error => raise(error)
+  | JsExn(jsError) => JsExn.throw(jsError)
+  | error => throw(error)
   }
 
 let observe = (
@@ -296,6 +305,7 @@ let observe = (
   ~failureOf: option<'result => option<errorSummary>>=?,
   ~detailsOf: option<'result => details>=?,
   ~paymentMethod=?,
+  ~source=?,
   ~syncOutcome=Returned,
   ~message=?,
   ~call: unit => 'value,
@@ -321,6 +331,7 @@ let observe = (
       ),
       ~paymentMethod?,
       ~context,
+      ~source?,
       ~message?,
     )
 
@@ -416,6 +427,7 @@ let observeCallback = (
   ~timeoutMs=?,
   ~failureOf=?,
   ~paymentMethod=?,
+  ~source=?,
   ~message=?,
   ~callback: 'fn,
 ): 'fn =>
@@ -429,6 +441,7 @@ let observeCallback = (
       ~timeoutMs?,
       ~failureOf?,
       ~paymentMethod?,
+      ~source?,
       ~syncOutcome=Triggered,
       ~message?,
       ~call=invoke,
@@ -443,6 +456,7 @@ let observeResource = (
   ~attributes=[],
   ~matchQuery=false,
   ~paymentMethod=?,
+  ~source=?,
   ~abandoned=() => false,
   ~message=?,
   ~onLoad,
@@ -467,6 +481,7 @@ let observeResource = (
       ~details,
       ~paymentMethod?,
       ~context,
+      ~source?,
       ~message?,
     )
 

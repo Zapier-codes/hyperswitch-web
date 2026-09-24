@@ -521,7 +521,18 @@ let resourceSeverity = value =>
 let resourceKind = (value): ResourceLoader.resource =>
   switch value {
   | FontStylesheet => Stylesheet
-  | _ => Script
+  | GooglePayScript
+  | SamsungPayScript
+  | ApplePayScript
+  | PaypalScript
+  | PazeScript
+  | KlarnaScript
+  | TrustpayScript
+  | BraintreeClientScript
+  | BraintreeApplePayScript
+  | PmAuthConnectorScript
+  | VaultScript =>
+    Script
   }
 
 // Static asset

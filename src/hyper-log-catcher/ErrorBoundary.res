@@ -145,7 +145,7 @@ module ErrorCard = {
           ->JSON.Encode.string,
         ),
       ]
-      let exn = error.error->Exn.anyToExnInternal
+      let exn = error.error->JsExn.anyToExnInternal
       SdkLogger.logCrash(~origin=ErrorBoundary, ~details, ~exn)
       None
     })

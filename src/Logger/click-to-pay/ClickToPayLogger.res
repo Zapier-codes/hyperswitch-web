@@ -3,6 +3,9 @@ include ClickToPayLoggerEvents
 
 let paymentMethod = LoggerPaymentMethod.Card(Unspecified)
 
+let source = () =>
+  LoggerRuntime.isMerchantWindow() ? Some(LoggerRuntime.AuthenticationSession) : None
+
 let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?, ~message=?) =>
   LoggerRuntime.emit(
     ~category=Lifecycle,
@@ -12,6 +15,7 @@ let logLifecycle = (~event: lifecycleEvent, ~details=[], ~exn=?, ~message=?) =>
     ~details,
     ~exn?,
     ~paymentMethod,
+    ~source=?source(),
     ~message?,
   )
 
@@ -24,6 +28,7 @@ let observeFunction = (~event: functionEvent, ~detailsOf=?, ~message=?, ~call) =
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
+    ~source=?source(),
     ~message?,
     ~call,
   )
@@ -38,6 +43,7 @@ let observeMerchantCall = (~method: merchantMethod, ~details=[], ~detailsOf=?, ~
     ~failureOf=LoggerUtils.summarizeErrorResponse,
     ~detailsOf?,
     ~paymentMethod,
+    ~source=?source(),
     ~message?,
     ~call,
   )
@@ -51,6 +57,7 @@ let observeApi = (~event: apiEvent, ~url, ~message=?, ~call) =>
     ~failureOf=LoggerUtils.httpFailure,
     ~detailsOf=LoggerUtils.httpDetails,
     ~paymentMethod,
+    ~source=?source(),
     ~message?,
     ~call,
   )
@@ -58,6 +65,7 @@ let observeApi = (~event: apiEvent, ~url, ~message=?, ~call) =>
 let observeResource = (
   ~event: resourceEvent,
   ~url,
+  ~attributes=event->resourceAttributes,
   ~matchQuery=false,
   ~message=?,
   ~onLoad=() => (),
@@ -68,8 +76,10 @@ let observeResource = (
     ~severity=event->resourceSeverity,
     ~url,
     ~resource=event->resourceKind,
+    ~attributes,
     ~matchQuery,
     ~paymentMethod,
+    ~source=?source(),
     ~message?,
     ~onLoad,
     ~onError,

@@ -82,7 +82,18 @@ let adapter = (resource, ~matchQuery) =>
 
 let statusOf = element => element->Window.getAttribute(statusAttribute)->Nullable.toOption
 
-let loadFailed = url => Exn.anyToExnInternal({"name": "RESOURCE_LOAD_ERROR", "message": url})
+@val @scope("performance") @return(nullable)
+external getEntriesByName: string => option<array<{..}>> = "getEntriesByName"
+
+let alreadyFetched = url =>
+  try {
+    url->getEntriesByName->Option.map(entries => entries->Array.length > 0)->Option.getOr(false)
+  } catch {
+  | _ => false
+  }
+
+let loadFailed = url =>
+  JsExn.anyToExnInternal({"name": "RESOURCE_LOAD_ERROR", "message": url->resourceIdentity})
 
 let load = (
   ~url,
@@ -96,34 +107,51 @@ let load = (
 ) => {
   let adapter = resource->adapter(~matchQuery)
 
-  let observe = (element, ~result) =>
+  let listen = (element, ~result) => {
+    element->Window.addLoadListener(() => {
+      element->Window.setAttribute(statusAttribute, "ready")
+      onLoad(result)
+    })
+    element->Window.addErrorListener(error => {
+      element->Window.setAttribute(statusAttribute, "error")
+      element->Window.remove
+      onError(error)
+    })
+  }
+
+  let create = () => {
+    let element = adapter.create(url, attributes)
+    element->Window.setAttribute(statusAttribute, "loading")
+    onStart()
+    element->listen(~result=Loaded)
+    element->adapter.attach
+  }
+
+  let reuse = element =>
     switch element->statusOf {
-    | Some("ready") => onLoad(result)
-    | Some("error") => onError(url->loadFailed)
-    | _ => {
-        element->Window.addLoadListener(() => {
-          element->Window.setAttribute(statusAttribute, "ready")
-          onLoad(result)
-        })
-        element->Window.addErrorListener(error => {
-          element->Window.setAttribute(statusAttribute, "error")
-          onError(error)
-        })
-      }
+    | Some("loading") => element->listen(~result=Reused)
+    | None if !(url->alreadyFetched) => element->listen(~result=Reused)
+    | Some(_) | None => setTimeout(() => onLoad(Reused), 0)->ignore
     }
+
+  let integrityMatches = element =>
+    attributes
+    ->Array.find(((name, _)) => name === "integrity")
+    ->Option.map(((_, expected)) =>
+      element->Window.getAttribute("integrity")->Nullable.toOption === Some(expected)
+    )
+    ->Option.getOr(true)
 
   switch url->String.trim {
   | "" => onError(url->loadFailed)
   | _ =>
     switch dedupe ? adapter.find(url) : None {
-    | Some(element) => setTimeout(() => element->observe(~result=Reused), 0)->ignore
-    | None => {
-        let element = adapter.create(url, attributes)
-        element->Window.setAttribute(statusAttribute, "loading")
-        onStart()
-        element->observe(~result=Loaded)
-        element->adapter.attach
+    | Some(element) if element->statusOf === Some("error") => {
+        element->Window.remove
+        create()
       }
+    | Some(element) if element->integrityMatches => element->reuse
+    | Some(_) | None => create()
     }
   }
 }

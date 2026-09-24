@@ -108,7 +108,26 @@ and scheduleFlush = () =>
   | None => queue.flushTimer = Some(setTimeout(flush, retryDelayMs()))
   }
 
-let flushNow = () => LoggerUtils.safeRun(flush)
+let drain = () =>
+  LoggerUtils.safeRun(() => {
+    clearTimer()
+    queue.errorPending = false
+    let continue = ref(true)
+    while continue.contents {
+      switch batchSize() {
+      | 0 => continue := false
+      | size => {
+          let batch = size->take
+          if !(batch->LoggerTransport.send) {
+            batch->requeue
+            continue := false
+          }
+        }
+      }
+    }
+    recountBytes()
+    queue.rows->Array.length > 0 ? scheduleFlush() : ()
+  })
 
 let push = (row, ~isError) => {
   queue.rows->Array.push(row)
@@ -160,8 +179,6 @@ let takeSendFailures = () => {
   failures
 }
 
-Window.addEventListener("visibilitychange", _ =>
-  Window.visibilityState === "hidden" ? flushNow() : ()
-)
-Window.addEventListener("pagehide", _ => flushNow())
-Window.addEventListener("beforeunload", _ => flushNow())
+Window.addEventListener("visibilitychange", _ => Window.visibilityState === "hidden" ? drain() : ())
+Window.addEventListener("pagehide", _ => drain())
+Window.addEventListener("beforeunload", _ => drain())

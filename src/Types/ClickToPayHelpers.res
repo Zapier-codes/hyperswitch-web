@@ -356,7 +356,7 @@ let initializeMastercardCheckout = (clickToPayToken: clickToPayToken) => {
           ->catch(err => reject(err))
         | None => {
             ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-            reject(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+            reject(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
           }
         }
       } catch {
@@ -365,7 +365,7 @@ let initializeMastercardCheckout = (clickToPayToken: clickToPayToken) => {
     }
   | None => {
       ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-      reject(Exn.anyToExnInternal("MastercardCheckoutServices is not available"))
+      reject(JsExn.anyToExnInternal("MastercardCheckoutServices is not available"))
     }
   }
 }
@@ -426,7 +426,7 @@ let authenticate = async (payload: authenticateInputPayload) => {
       }
     | None => {
         ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-        Error(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+        Error(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
       }
     }
   } catch {
@@ -452,7 +452,7 @@ let checkoutWithCard = async (~windowRef: Types.window, ~srcDigitalCardId: strin
       }
     | None => {
         ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-        Error(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+        Error(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
       }
     }
   } catch {
@@ -478,7 +478,7 @@ let encryptCardForClickToPay = async (~cardNumber, ~expiryMonth, ~expiryYear, ~c
       }
     | None => {
         ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-        Error(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+        Error(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
       }
     }
   } catch {
@@ -504,7 +504,7 @@ let checkoutWithNewCard = async (payload: checkoutWithNewCardPayload) => {
       }
     | None => {
         ClickToPayLogger.logLifecycle(~event=ProviderUnavailable({provider: MastercardUctp}))
-        Error(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+        Error(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
       }
     }
   } catch {
@@ -603,7 +603,7 @@ let signOut = async () => {
       }
     | None => {
         Console.error("Mastercard Checkout Service not initialized")
-        Error(Exn.anyToExnInternal("Mastercard Checkout Service not initialized"))
+        Error(JsExn.anyToExnInternal("Mastercard Checkout Service not initialized"))
       }
     }
   } catch {

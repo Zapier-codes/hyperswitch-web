@@ -380,8 +380,8 @@ let performUpdateIntent = async (
           [("status", "succeeded"->JSON.Encode.string)]->getJsonFromArrayOfJson
         }
       } catch {
-      | Exn.Error(e) =>
-        let msg = Exn.message(e)->Option.getOr("Something went wrong during updateIntent!")
+      | JsExn(e) =>
+        let msg = JsExn.message(e)->Option.getOr("Something went wrong during updateIntent!")
         getFailedSubmitResponse(~message=msg, ~errorType="update_intent_error")
       | _ =>
         let msg = "An unexpected error occurred during updateIntent."
