@@ -581,6 +581,7 @@ let make = (keys, options: option<JSON.t>, analyticsInfo: option<JSON.t>) => {
         let pmManagementOptions =
           pmManagementOptionsDict->Option.mapOr(pmManagementOptions, JSON.Encode.object)
         pmSessionId := pmSessionIdVal
+        LoggerContext.setPmSessionId(pmSessionIdVal)
 
         HyperLoaderLogger.observeMerchantCall(
           ~event=HyperLoaderLogger.PaymentMethodsManagementElements({surface: Hyper}),

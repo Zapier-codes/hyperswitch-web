@@ -165,6 +165,7 @@ let emit = (
             ("session_id", context.sessionId),
             ("merchant_id", context.merchantId),
             ("payment_id", context.paymentId),
+            ("authentication_id", context.authenticationId),
             ("app_id", ""),
             ("platform", Window.Navigator.platform->LoggerUtils.screamingSnakeCase),
             (

@@ -133,6 +133,7 @@ let make = (options: JSON.t): initPaymentMethodSession => {
   let sdkAuth = sdkAuthorizationRaw->getSdkAuthorizationData
   let publishableKey = sdkAuth.publishableKey->Option.getOr("")
   let pmSessionId = sdkAuth.pmSessionId->Option.getOr("")
+  LoggerContext.setPmSessionId(pmSessionId)
   let customerId = sdkAuth.customerId->Option.getOr("")
 
   let locale = optionsDict->getString("locale", "auto")
